@@ -94,6 +94,11 @@ export class ActivityState {
     return this.#tools.splice(index, 1)[0];
   }
 
+  // Returns and clears all running tools (turn cancelled or failed).
+  drainTools(): RunningTool[] {
+    return this.#tools.splice(0);
+  }
+
   // In-flight rows only: running tools (when active, they are the story),
   // otherwise a thinking or streaming indicator.
   render(now: number, width: number, theme: Theme): string[] {

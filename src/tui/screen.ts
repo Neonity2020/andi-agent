@@ -60,7 +60,9 @@ export class InlineScreen {
   #physicalLines(line: string): string[] {
     if (line.includes("\x1b")) return [line];
     if (line === "") return [""];
-    return wrapText(line, this.#columns());
+    // Terminals can report width 0 (detached ptys); fall back to a usable floor.
+    const width = this.#columns();
+    return wrapText(line, width > 0 ? width : 20);
   }
 
   #lift(): string {
