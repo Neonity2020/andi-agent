@@ -19,6 +19,9 @@ export class InlineScreen {
   readonly #sink: ScreenSink;
   readonly #columns: () => number;
   #painted: string[] = [];
+  // Rows from the region bottom the real cursor sits at; undefined means the
+  // cursor is one line below the region (the render/print invariant).
+  #cursorFromBottom: number | undefined;
 
   constructor(options: InlineScreenOptions) {
     this.#sink = options.sink;
@@ -38,6 +41,16 @@ export class InlineScreen {
     this.#write(this.#block(physical));
     this.#write(eraseScreenBelow());
     this.#painted = physical;
+  }
+
+  // Places the real cursor on a region row (1 = bottom painted line) for
+  // input editing. The next render/print lifts from here instead of assuming
+  // the below-region position, so scrollback above is never touched.
+  positionCursor(rowsFromBottom: number, column: number): void {
+    if (this.#painted.length === 0) return;
+    if (!Number.isInteger(rowsFromBottom) || rowsFromBottom < 1 || rowsFromBottom > this.#painted.length) return;
+    this.#write(cursorUp(rowsFromBottom) + cursorToColumn(Math.max(column, 1)));
+    this.#cursorFromBottom = rowsFromBottom;
   }
 
   // Writes lines into scrollback above the managed region and repaints it.
@@ -66,7 +79,12 @@ export class InlineScreen {
   }
 
   #lift(): string {
-    return this.#painted.length > 0 ? cursorUp(this.#painted.length) + cursorToColumn(1) : "";
+    if (this.#painted.length === 0) return "";
+    const offset = this.#cursorFromBottom === undefined ? this.#painted.length : this.#painted.length - this.#cursorFromBottom;
+    this.#cursorFromBottom = undefined;
+    // The column reset is needed even when offset is 0: eraseLineAll does not
+    // move the cursor, so repainting must start at column 1.
+    return (offset > 0 ? cursorUp(offset) : "") + cursorToColumn(1);
   }
 
   #block(lines: readonly string[]): string {

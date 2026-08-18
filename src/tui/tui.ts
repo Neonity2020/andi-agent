@@ -7,8 +7,6 @@ import type { AgentEvent } from "../agent";
 import type { AgentRunResult } from "../agent";
 import { ActivityState, renderCancelledTool, renderSealedTool, renderUserEcho } from "./activity";
 import {
-  cursorToColumn,
-  cursorUp,
   disableBracketedPaste,
   enableBracketedPaste,
   hideCursor,
@@ -341,15 +339,15 @@ export class Tui {
     this.#screen.render(lines);
 
     if (this.#mode === "input") {
-      // After render the cursor sits one line below the region; the input
-      // line is always the second-to-last painted line (status bar is last),
-      // so it is exactly two lines up.
+      // The input line is always the second row from the bottom of the
+      // region (status bar is last); the screen tracks the cursor there.
       const prefixWidth = textWidth(this.#theme.symbols.prompt) + 1;
       const cursorWidth = textWidth(this.#editor.getClusters().slice(0, this.#editor.getCursor()).join(""));
       const budget = Math.max(width - prefixWidth, 1);
       const scroll = Math.max(0, cursorWidth - budget + 1);
-      const column = Math.max(prefixWidth + cursorWidth - scroll + 1, 1);
-      this.#write(`${cursorUp(2)}${cursorToColumn(column)}${showCursor()}`);
+      const column = Math.min(Math.max(prefixWidth + cursorWidth - scroll + 1, 1), width);
+      this.#screen.positionCursor(2, column);
+      this.#write(showCursor());
     } else {
       this.#write(hideCursor());
     }

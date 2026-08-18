@@ -49,6 +49,29 @@ describe("InlineScreen", () => {
     expect(output.join("")).toBe("\x1b[2K\x1b[1mabcdefgh\x1b[0m\n\x1b[J");
   });
 
+  test("repaints from a positioned cursor without lifting into scrollback", () => {
+    const { screen, output } = createHarness(40);
+    screen.print(["sealed"]);
+    screen.render(["a", "b"]);
+    screen.positionCursor(2, 3);
+    output.length = 0;
+    screen.render(["x", "y"]);
+    const data = output.join("");
+    // Cursor already sits on the region's top row: lift is just a column
+    // reset, never a cursorUp that would eat the sealed line above.
+    expect(data.startsWith("\r\x1b[2Kx")).toBeTrue();
+    expect(data).not.toContain("\x1b[2A");
+  });
+
+  test("disposes from a positioned cursor with the right lift", () => {
+    const { screen, output } = createHarness(40);
+    screen.render(["a", "b", "c"]);
+    screen.positionCursor(2, 4);
+    output.length = 0;
+    screen.dispose();
+    expect(output.join("")).toBe("\x1b[1A\r\x1b[J");
+  });
+
   test("print seals lines into scrollback and repaints the region", () => {
     const { screen, output } = createHarness(40);
     screen.render(["a", "b"]);

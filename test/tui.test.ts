@@ -185,6 +185,17 @@ describe("Tui", () => {
     expect(raw()).toMatch(/\x1b\[2A\x1b\[\d+G\x1b\[\?25h/);
   });
 
+  test("keystrokes never lift the repaint into scrollback", () => {
+    const { tui, stdin, raw } = createHarness();
+    tui.start();
+    void tui.read("you> ");
+    stdin.send("abc");
+    stdin.send("\x7f");
+    // A full-region lift ("\x1b[2A\r") from the positioned cursor would
+    // erase sealed lines above the region — the eat-a-line bug.
+    expect(raw()).not.toContain("\x1b[2A\r");
+  });
+
   test("forwards interrupts while running to the repl handler", async () => {
     const { tui, stdin } = createHarness();
     tui.start();
