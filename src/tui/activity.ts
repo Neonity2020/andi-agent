@@ -1,0 +1,126 @@
+// Live-region state: what the agent is doing right now. The Tui seals
+// finished units into scrollback; this module only renders in-flight work
+// (running tools, streaming preview) so the bottom region stays small.
+
+import type { Theme } from "./theme";
+import { SPINNER_FRAMES } from "./theme";
+import { textWidth, truncateToWidth, wrapText } from "./width";
+
+export interface RunningTool {
+  id: string;
+  name: string;
+  startedAt: number;
+}
+
+export function spinnerFrame(elapsedMs: number): string {
+  const index = Math.floor(Math.max(elapsedMs, 0) / 90) % SPINNER_FRAMES.length;
+  return SPINNER_FRAMES[index] ?? SPINNER_FRAMES[0];
+}
+
+export function formatDuration(ms: number): string {
+  if (ms < 1000) return `${Math.max(ms, 0)}ms`;
+  if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
+  const minutes = Math.floor(ms / 60_000);
+  const seconds = Math.round((ms % 60_000) / 1000);
+  return `${minutes}m${String(seconds).padStart(2, "0")}s`;
+}
+
+// Wraps text under a prefix; continuation lines align under the prefix.
+function prefixLines(plainPrefix: string, styledPrefix: string, text: string, width: number): string[] {
+  const budget = Math.max(width - textWidth(plainPrefix), 4);
+  const indent = " ".repeat(textWidth(plainPrefix));
+  return wrapText(text, budget).map((line, index) => (index === 0 ? styledPrefix + line : indent + line));
+}
+
+export function renderUserEcho(text: string, width: number, theme: Theme): string[] {
+  const prefix = `${theme.brandText(theme.symbols.prompt)} `;
+  return prefixLines(`${theme.symbols.prompt} `, prefix, text, width);
+}
+
+export function renderSealedTool(name: string, ok: boolean, durationMs: number, theme: Theme): string {
+  const symbol = ok ? theme.successText(theme.symbols.check) : theme.errorText(theme.symbols.cross);
+  const duration = theme.style.dim(` ${theme.symbols.dot} ${formatDuration(durationMs)}`);
+  return `${symbol} ${theme.toolText(name)}${duration}`;
+}
+
+export function renderCancelledTool(name: string, theme: Theme): string {
+  return `${theme.style.dim(theme.symbols.dot)} ${theme.toolText(name)} ${theme.style.dim("cancelled")}`;
+}
+
+export type ActivityPhase = "idle" | "thinking" | "streaming";
+
+export class ActivityState {
+  #phase: ActivityPhase = "idle";
+  #turnStartedAt: number | undefined;
+  #stream = "";
+  #tools: RunningTool[] = [];
+
+  get phase(): ActivityPhase {
+    return this.#phase;
+  }
+
+  beginTurn(at: number): void {
+    this.#phase = "thinking";
+    this.#turnStartedAt = at;
+    this.#stream = "";
+    this.#tools = [];
+  }
+
+  endTurn(): void {
+    this.#phase = "idle";
+    this.#turnStartedAt = undefined;
+    this.#stream = "";
+    this.#tools = [];
+  }
+
+  appendDelta(text: string): void {
+    if (this.#phase === "thinking") this.#phase = "streaming";
+    this.#stream += text;
+  }
+
+  takeStream(): string {
+    const stream = this.#stream;
+    this.#stream = "";
+    return stream;
+  }
+
+  toolStarted(id: string, name: string, startedAt: number): void {
+    this.#tools.push({ id, name, startedAt });
+  }
+
+  toolEnded(id: string): RunningTool | undefined {
+    const index = this.#tools.findIndex((tool) => tool.id === id);
+    if (index === -1) return undefined;
+    return this.#tools.splice(index, 1)[0];
+  }
+
+  // In-flight rows only: running tools (when active, they are the story),
+  // otherwise a thinking or streaming indicator.
+  render(now: number, width: number, theme: Theme): string[] {
+    const lines: string[] = [];
+    for (const tool of this.#tools) {
+      const frame = theme.brandText(spinnerFrame(now - tool.startedAt));
+      const elapsed = theme.style.dim(` ${theme.symbols.dot} ${formatDuration(now - tool.startedAt)}`);
+      lines.push(`${frame} ${theme.toolText(tool.name)}${elapsed}`);
+    }
+    if (lines.length > 0) return lines;
+
+    if (this.#phase === "thinking") {
+      const elapsed =
+        this.#turnStartedAt === undefined
+          ? ""
+          : theme.style.dim(` ${theme.symbols.dot} ${formatDuration(now - this.#turnStartedAt)}`);
+      lines.push(`${theme.brandText(spinnerFrame(now - (this.#turnStartedAt ?? now)))} ${theme.style.dim("thinking")}${elapsed}`);
+      return lines;
+    }
+
+    if (this.#phase === "streaming" && this.#stream.trim().length > 0) {
+      const previewWidth = Math.max(width - 4, 8);
+      const wrapped = wrapText(this.#stream.trimEnd().split("\n").at(-1) ?? "", previewWidth);
+      const last = wrapped.at(-1) ?? "";
+      const prefix = theme.style.dim(`${theme.symbols.ellipsis} `);
+      lines.push(prefix + theme.style.dim(truncateToWidth(last, previewWidth)));
+    }
+    return lines;
+  }
+}
