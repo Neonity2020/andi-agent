@@ -34,6 +34,7 @@ interface Harness {
   tui: Tui;
   stdin: FakeStdin;
   output: () => string;
+  raw: () => string;
   advance: (ms: number) => void;
 }
 
@@ -54,6 +55,7 @@ function createHarness(): Harness {
     tui,
     stdin,
     output: () => chunks.join("").replace(/\x1b\[[0-9;?]*[A-Za-z~]/g, ""),
+    raw: () => chunks.join(""),
     advance: (ms) => {
       clock += ms;
     },
@@ -171,6 +173,16 @@ describe("Tui", () => {
     const pending = tui.approve(["bun", "install"], controller.signal);
     controller.abort();
     await expect(pending).resolves.toBe(false);
+  });
+
+  test("positions the real cursor on the input line, above the status bar", () => {
+    const { tui, stdin, raw } = createHarness();
+    tui.start();
+    void tui.read("you> ");
+    stdin.send("ab");
+    // Two lines up from below the region (over the status bar) onto the
+    // input line, then to the column just after the typed text.
+    expect(raw()).toMatch(/\x1b\[2A\x1b\[\d+G\x1b\[\?25h/);
   });
 
   test("forwards interrupts while running to the repl handler", async () => {
