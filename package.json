@@ -12,5 +12,8 @@
   "devDependencies": {
     "@types/bun": "latest",
     "typescript": "^5.9.0"
+  },
+  "dependencies": {
+    "puppeteer": "^25.8.0"
   }
 }

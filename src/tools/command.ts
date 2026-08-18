@@ -1,5 +1,6 @@
 import type { Tool } from "./types";
 import { requireRecord, requireString, requireStringArray } from "./validation";
+import { cancellationError, throwIfAborted } from "../runtime/abort";
 
 const APPROVED_SCRIPTS = new Set(["test", "typecheck", "lint", "check", "build"]);
 
@@ -9,9 +10,10 @@ export interface CommandResult {
   stdout: string;
   stderr: string;
   timedOut: boolean;
+  cancelled: boolean;
 }
 
-export type CommandApprover = (command: readonly string[]) => Promise<boolean>;
+export type CommandApprover = (command: readonly string[], signal?: AbortSignal) => Promise<boolean>;
 
 export interface CommandToolOptions {
   approver?: CommandApprover;
@@ -54,7 +56,9 @@ export async function runCommand(
   timeoutMs: number,
   outputLimit = 64 * 1024,
   approver?: CommandApprover,
+  signal?: AbortSignal,
 ): Promise<CommandResult> {
+  throwIfAborted(signal);
   if (program.length === 0 || program.includes("\0") || args.some((argument) => argument.includes("\0"))) {
     throw new Error("Command contains an invalid empty program or null byte");
   }
@@ -62,8 +66,11 @@ export async function runCommand(
   const command = [program, ...args];
   if (!isCommandAllowed(program, args)) {
     if (!approver) throw new Error(`Command requires approval: ${JSON.stringify(command)}`);
-    if (!(await approver(command))) throw new Error(`Command was rejected by the user: ${JSON.stringify(command)}`);
+    const approved = await approver(command, signal);
+    throwIfAborted(signal);
+    if (!approved) throw new Error(`Command was rejected by the user: ${JSON.stringify(command)}`);
   }
+  throwIfAborted(signal);
 
   const process = Bun.spawn(command, {
     cwd,
@@ -73,9 +80,17 @@ export async function runCommand(
     env: processEnvWithoutSecrets(),
   });
   let timedOut = false;
-  const timer = setTimeout(() => {
-    timedOut = true;
+  let cancelled = false;
+  const cancelProcess = (): void => {
+    cancelled = true;
     process.kill();
+  };
+  signal?.addEventListener("abort", cancelProcess, { once: true });
+  const timer = setTimeout(() => {
+    if (!cancelled) {
+      timedOut = true;
+      process.kill();
+    }
   }, timeoutMs);
 
   try {
@@ -84,9 +99,10 @@ export async function runCommand(
       readLimited(process.stdout, outputLimit),
       readLimited(process.stderr, outputLimit),
     ]);
-    return { command, exitCode, stdout, stderr, timedOut };
+    return { command, exitCode, stdout, stderr, timedOut, cancelled };
   } finally {
     clearTimeout(timer);
+    signal?.removeEventListener("abort", cancelProcess);
   }
 }
 
@@ -115,7 +131,7 @@ export function createCommandTool(cwd: string, options: CommandToolOptions = {})
       required: ["program", "args"],
       additionalProperties: false,
     },
-    async execute(input: unknown) {
+    async execute(input: unknown, context) {
       const values = requireRecord(input);
       const timeout = values.timeout_seconds === undefined ? 30 : values.timeout_seconds;
       if (!Number.isInteger(timeout) || (timeout as number) < 1 || (timeout as number) > 120) {
@@ -123,9 +139,19 @@ export function createCommandTool(cwd: string, options: CommandToolOptions = {})
       }
       const program = requireString(values, "program");
       const args = requireStringArray(values, "args");
-      return options.approver
-        ? runCommand(cwd, program, args, (timeout as number) * 1_000, 64 * 1024, options.approver)
-        : runCommand(cwd, program, args, (timeout as number) * 1_000);
+      const result = options.approver
+        ? await runCommand(
+            cwd,
+            program,
+            args,
+            (timeout as number) * 1_000,
+            64 * 1024,
+            options.approver,
+            context?.signal,
+          )
+        : await runCommand(cwd, program, args, (timeout as number) * 1_000, 64 * 1024, undefined, context?.signal);
+      if (result.cancelled) throw cancellationError(context?.signal);
+      return result;
     },
   };
 }

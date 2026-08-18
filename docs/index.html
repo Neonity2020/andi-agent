@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>andi-agent</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #0f172a; color: #e2e8f0; line-height: 1.7; }
+    .container { max-width: 860px; margin: 0 auto; padding: 3rem 1.5rem; }
+    header { border-bottom: 1px solid #1e293b; padding-bottom: 2rem; margin-bottom: 2.5rem; }
+    h1 { font-size: 2.4rem; font-weight: 700; color: #f8fafc; letter-spacing: -0.02em; }
+    h1 span { color: #38bdf8; }
+    .tagline { color: #94a3b8; font-size: 1.15rem; margin-top: 0.4rem; }
+    h2 { font-size: 1.35rem; color: #38bdf8; margin: 2rem 0 0.8rem; border-left: 3px solid #38bdf8; padding-left: 0.75rem; }
+    p { color: #cbd5e1; margin-bottom: 1rem; }
+    ul, ol { padding-left: 1.4rem; color: #cbd5e1; margin-bottom: 1rem; }
+    li { margin-bottom: 0.35rem; }
+    code { background: #1e293b; padding: 0.15em 0.45em; border-radius: 4px; font-size: 0.9em; color: #fbbf24; font-family: "SF Mono", "Fira Code", monospace; }
+    pre { background: #1e293b; padding: 1.2rem 1.4rem; border-radius: 8px; overflow-x: auto; margin: 1rem 0; }
+    pre code { background: none; color: #e2e8f0; padding: 0; font-size: 0.88rem; }
+    .card { background: #1e293b; border-radius: 10px; padding: 1.4rem 1.6rem; margin: 1rem 0 1.5rem; }
+    .card h3 { color: #f8fafc; margin-bottom: 0.6rem; font-size: 1.05rem; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin: 1rem 0; }
+    @media (max-width: 640px) { .grid { grid-template-columns: 1fr; } }
+    footer { margin-top: 3rem; padding-top: 1.5rem; border-top: 1px solid #1e293b; color: #64748b; font-size: 0.88rem; text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="container">
+
+    <header>
+      <h1>andi-<span>agent</span></h1>
+      <p class="tagline">一个使用 Bun + TypeScript 构建的最小 coding agent，默认调用 Agnes 2.5 Flash。</p>
+    </header>
+
+    <h2>概述</h2>
+    <p>andi-agent 是一个可在本地工作区内安全执行编程任务的 AI 代理。它通过 OpenAI 兼容的流式 API 与模型交互，支持多轮工具调用、会话持久化与命令审批，专注于最小化依赖与最大安全性。</p>
+
+    <div class="card">
+      <h3>快速开始</h3>
+      <pre><code>bun install
+cp .env.example .env
+# 编辑 .env，填写 AGNES_API_KEY
+bun run start -- --cwd . "阅读 README，创建项目摘要"</code></pre>
+    </div>
+
+    <h2>核心能力</h2>
+    <div class="grid">
+      <div class="card">
+        <h3>📁 文件操作</h3>
+        <p><code>read_file</code>、<code>write_file</code>、<code>edit_file</code>，路径穿越防护，拒绝符号链接写入，<code>.andi-agent</code> 目录受保护。</p>
+      </div>
+      <div class="card">
+        <h3>🔍 代码搜索</h3>
+        <p><code>search_code</code> 基于 ripgrep，按固定字符串匹配，自动跳过 <code>.git</code>、<code>node_modules</code>。</p>
+      </div>
+      <div class="card">
+        <h3>⚡ 命令执行</h3>
+        <p><code>run_command</code> 无 shell 执行白名单命令（bun/npm 验证脚本、tsc），其余命令需终端逐条审批。</p>
+      </div>
+      <div class="card">
+        <h3>🔧 Git 集成</h3>
+        <p><code>git_status</code>、<code>git_diff</code> 只读查看，<code>git_stage</code> 与 <code>git_commit</code> 要求审批，不自动 push。</p>
+      </div>
+      <div class="card">
+        <h3>💬 会话持久化</h3>
+        <p>使用 <code>--session ID</code> 保存和恢复多轮上下文，存储于本地 <code>.andi-agent/sessions/</code>，不会提交到 Git。</p>
+      </div>
+      <div class="card">
+        <h3>🔄 交互式 REPL</h3>
+        <p>启动 <code>--repl</code> 进入持续进程，内置 <code>/help</code>、<code>/status</code>、<code>/clear</code>、<code>/exit</code> 命令。</p>
+      </div>
+    </div>
+
+    <h2>安全设计</h2>
+    <ul>
+      <li>所有文件操作限定在工作区边界内，拒绝路径穿越与符号链接写入。</li>
+      <li>命令执行仅白名单内脚本自动通过，其余等待终端审批或默认拒绝。</li>
+      <li>环境变量脱敏：仅透传 <code>PATH</code>、<code>LANG</code>、<code>TERM</code> 等安全变量。</li>
+      <li>Git 操作统一通过专用工具，禁用 <code>external diff</code>、<code>textconv</code> 等仓库扩展。</li>
+      <li>上下文超限时按完整用户轮次裁剪，保留最近交互以保证连贯性。</li>
+    </ul>
+
+    <h2>命令参考</h2>
+    <pre><code># 单次任务
+bun run start -- --session feature-auth "分析认证模块"
+
+# 持久 REPL
+bun run start -- --repl --session real-dev --approval ask
+
+# 帮助
+bun run start -- --help
+
+# 类型检查 & 测试
+bun run typecheck
+bun test</code></pre>
+
+    <h2>项目结构</h2>
+    <pre><code>src/
+├── agent.ts          # 核心 Agent 循环
+├── cli.ts            # CLI 入口
+├── config.ts         # 配置加载
+├── context.ts        # 上下文压缩
+├── session.ts        # 会话持久化
+├── repl.ts           # 交互式 REPL
+├── model/
+│   └── openai-compatible.ts  # SSE 流式适配
+└── tools/
+    ├── registry.ts    # 工具注册表
+    ├── workspace.ts   # 文件读写
+    ├── editing.ts     # 精确编辑
+    ├── search.ts      # ripgrep 搜索
+    ├── command.ts     # 命令执行
+    └── git.ts         # Git 工具
+
+test/                  # 完整单测覆盖
+.plans/                # 阶段设计文档</code></pre>
+
+    <footer>
+      <p>andi-agent · Bun + TypeScript · Agnes AI</p>
+    </footer>
+
+  </div>
+</body>
+</html>

@@ -48,4 +48,23 @@ describe("runCommand", () => {
       runCommand(process.cwd(), "node", ["--version"], 5_000, 64 * 1024, async () => false),
     ).rejects.toThrow("rejected by the user");
   });
+
+  test("kills a subprocess when cancelled and distinguishes it from timeout", async () => {
+    const controller = new AbortController();
+    const running = runCommand(
+      process.cwd(),
+      "node",
+      ["-e", "setTimeout(() => {}, 5000)"],
+      5_000,
+      64 * 1024,
+      async () => true,
+      controller.signal,
+    );
+    setTimeout(() => controller.abort(), 30);
+
+    const result = await running;
+
+    expect(result.cancelled).toBeTrue();
+    expect(result.timedOut).toBeFalse();
+  });
 });

@@ -1,6 +1,7 @@
 import type { Tool } from "./types";
 import { requireRecord, requireString } from "./validation";
 import type { Workspace } from "./workspace";
+import { throwIfAborted } from "../runtime/abort";
 
 export function createEditTool(workspace: Workspace): Tool {
   return {
@@ -17,7 +18,8 @@ export function createEditTool(workspace: Workspace): Tool {
       required: ["path", "old_text", "new_text"],
       additionalProperties: false,
     },
-    async execute(input: unknown) {
+    async execute(input: unknown, context) {
+      throwIfAborted(context?.signal);
       const values = requireRecord(input);
       const path = requireString(values, "path");
       const oldText = requireString(values, "old_text");
@@ -34,6 +36,7 @@ export function createEditTool(workspace: Workspace): Tool {
 
       const updated = content.slice(0, firstMatch) + newText + content.slice(firstMatch + oldText.length);
       await workspace.write(path, updated);
+      throwIfAborted(context?.signal);
       return { edited: path };
     },
   };

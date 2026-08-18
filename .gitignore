@@ -3,4 +3,5 @@ node_modules/
 .andi-agent/
 *.log
 coverage/
+*.tsbuildinfo
 .DS_Store

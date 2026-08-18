@@ -9,6 +9,7 @@ describe("OpenAICompatibleProvider", () => {
       requestUrl = String(input);
       requestInit = init;
       return Response.json({
+        usage: { prompt_tokens: 12, completion_tokens: 4, total_tokens: 16 },
         choices: [
           {
             message: {
@@ -47,6 +48,7 @@ describe("OpenAICompatibleProvider", () => {
     expect(result).toEqual({
       content: null,
       toolCalls: [{ id: "call-1", name: "read_file", arguments: '{"path":"README.md"}' }],
+      usage: { inputTokens: 12, outputTokens: 4, totalTokens: 16 },
     });
   });
 
@@ -55,6 +57,7 @@ describe("OpenAICompatibleProvider", () => {
       'data: {"choices":[{"delta":{"content":"Hel"}}]}\n\n',
       'data: {"choices":[{"delta":{"content":"lo","tool_calls":[{"index":0,"id":"call-1","function":{"name":"read_","arguments":"{\\"path\\":"}}]}}]}\n\n',
       'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"name":"file","arguments":"\\"README.md\\"}"}}]}}]}\n\n',
+      'data: {"choices":[],"usage":{"prompt_tokens":20,"completion_tokens":5,"total_tokens":25}}\n\n',
       "data: [DONE]\n\n",
     ].join("");
     const bytes = new TextEncoder().encode(events);
@@ -89,6 +92,30 @@ describe("OpenAICompatibleProvider", () => {
     expect(result).toEqual({
       content: "Hello",
       toolCalls: [{ id: "call-1", name: "read_file", arguments: '{"path":"README.md"}' }],
+      usage: { inputTokens: 20, outputTokens: 5, totalTokens: 25 },
     });
+  });
+
+  test("cancels an active SSE reader", async () => {
+    let readerCancelled = false;
+    const body = new ReadableStream<Uint8Array>({
+      cancel() {
+        readerCancelled = true;
+      },
+    });
+    const fetcher = (async () => new Response(body)) as unknown as typeof fetch;
+    const provider = new OpenAICompatibleProvider({ apiKey: "test-key", model: "agnes-2.5-flash", fetcher });
+    const controller = new AbortController();
+    const completion = provider.complete([{ role: "user", content: "wait" }], [], {
+      onTextDelta() {},
+      signal: controller.signal,
+    });
+
+    await Bun.sleep(0);
+    controller.abort();
+
+    await expect(completion).rejects.toThrow();
+    await Bun.sleep(0);
+    expect(readerCancelled).toBeTrue();
   });
 });

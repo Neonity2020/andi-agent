@@ -5,12 +5,14 @@ import { resolve } from "node:path";
 import type { Tool } from "./types";
 import { requireRecord, requireString, requireStringArray } from "./validation";
 import type { Workspace } from "./workspace";
+import { cancellationError, throwIfAborted } from "../runtime/abort";
 
 export interface GitToolOptions {
   approver?: CommandApprover;
 }
 
-async function runGitRead(cwd: string, args: readonly string[]): Promise<CommandResult> {
+async function runGitRead(cwd: string, args: readonly string[], signal?: AbortSignal): Promise<CommandResult> {
+  throwIfAborted(signal);
   const command = ["git", "-c", "core.fsmonitor=false", "--no-pager", ...args];
   const process = Bun.spawn(command, {
     cwd,
@@ -19,12 +21,20 @@ async function runGitRead(cwd: string, args: readonly string[]): Promise<Command
     stderr: "pipe",
     env: processEnvWithoutSecrets(),
   });
+  let cancelled = false;
+  const cancelProcess = (): void => {
+    cancelled = true;
+    process.kill();
+  };
+  signal?.addEventListener("abort", cancelProcess, { once: true });
   const [exitCode, stdout, stderr] = await Promise.all([
     process.exited,
     readLimited(process.stdout, 128 * 1024),
     readLimited(process.stderr, 32 * 1024),
   ]);
-  return { command, exitCode, stdout, stderr, timedOut: false };
+  signal?.removeEventListener("abort", cancelProcess);
+  if (cancelled) throw cancellationError(signal);
+  return { command, exitCode, stdout, stderr, timedOut: false, cancelled: false };
 }
 
 function requirePaths(values: Record<string, unknown>, workspace: Workspace): string[] {
@@ -58,9 +68,9 @@ export function createGitTools(workspace: Workspace, options: GitToolOptions = {
       name: "git_status",
       description: "Show the concise Git working tree status without modifying it.",
       parameters: { type: "object", properties: {}, additionalProperties: false },
-      async execute(input: unknown) {
+      async execute(input: unknown, context) {
         requireRecord(input);
-        return runGitRead(workspace.root, ["status", "--short"]);
+        return runGitRead(workspace.root, ["status", "--short"], context?.signal);
       },
     },
     {
@@ -74,7 +84,7 @@ export function createGitTools(workspace: Workspace, options: GitToolOptions = {
         },
         additionalProperties: false,
       },
-      async execute(input: unknown) {
+      async execute(input: unknown, context) {
         const values = requireRecord(input);
         if (values.staged !== undefined && typeof values.staged !== "boolean") {
           throw new Error("Field 'staged' must be a boolean");
@@ -82,7 +92,7 @@ export function createGitTools(workspace: Workspace, options: GitToolOptions = {
         const args = ["diff", "--no-ext-diff", "--no-textconv"];
         if (values.staged === true) args.push("--cached");
         if (values.paths !== undefined) args.push("--", ...requirePaths(values, workspace));
-        return runGitRead(workspace.root, args);
+        return runGitRead(workspace.root, args, context?.signal);
       },
     },
     {
@@ -94,10 +104,20 @@ export function createGitTools(workspace: Workspace, options: GitToolOptions = {
         required: ["paths"],
         additionalProperties: false,
       },
-      async execute(input: unknown) {
+      async execute(input: unknown, context) {
         const paths = await requireStagePaths(requireRecord(input), workspace);
         if (!options.approver) throw new Error("git_stage requires interactive command approval");
-        return runCommand(workspace.root, "git", ["add", "--", ...paths], 30_000, 64 * 1024, options.approver);
+        const result = await runCommand(
+          workspace.root,
+          "git",
+          ["add", "--", ...paths],
+          30_000,
+          64 * 1024,
+          options.approver,
+          context?.signal,
+        );
+        if (result.cancelled) throw cancellationError(context?.signal);
+        return result;
       },
     },
     {
@@ -109,13 +129,23 @@ export function createGitTools(workspace: Workspace, options: GitToolOptions = {
         required: ["message"],
         additionalProperties: false,
       },
-      async execute(input: unknown) {
+      async execute(input: unknown, context) {
         const message = requireString(requireRecord(input), "message").trim();
         if (message.length === 0 || message.length > 200 || message.includes("\n")) {
           throw new Error("Commit message must be one non-empty line of at most 200 characters");
         }
         if (!options.approver) throw new Error("git_commit requires interactive command approval");
-        return runCommand(workspace.root, "git", ["commit", "-m", message], 120_000, 64 * 1024, options.approver);
+        const result = await runCommand(
+          workspace.root,
+          "git",
+          ["commit", "-m", message],
+          120_000,
+          64 * 1024,
+          options.approver,
+          context?.signal,
+        );
+        if (result.cancelled) throw cancellationError(context?.signal);
+        return result;
       },
     },
   ];

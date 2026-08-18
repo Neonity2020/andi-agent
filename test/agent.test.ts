@@ -125,4 +125,55 @@ describe("Agent", () => {
     expect(await agent.run("greet")).toBe("Hello world");
     expect(deltas).toEqual(["Hello", " world"]);
   });
+
+  test("checkpoints messages, aggregates usage, and reports cancellation", async () => {
+    const checkpoints: Array<{ state: string; messages: number; tokens: number }> = [];
+    const events: string[] = [];
+    const controller = new AbortController();
+    const model: ModelProvider = {
+      async complete(_messages, _tools, options) {
+        return new Promise((_resolve, reject) => {
+          options?.signal?.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")), {
+            once: true,
+          });
+        });
+      },
+    };
+    const agent = new Agent({
+      model,
+      tools: new ToolRegistry(),
+      onEvent(event) {
+        events.push(event.type);
+      },
+    });
+    const running = agent.runWithHistory("wait", [], {
+      signal: controller.signal,
+      async onCheckpoint(checkpoint) {
+        checkpoints.push({
+          state: checkpoint.state,
+          messages: checkpoint.messages.length,
+          tokens: checkpoint.usage.totalTokens,
+        });
+      },
+    });
+    setTimeout(() => controller.abort(), 10);
+
+    await expect(running).rejects.toThrow("Operation cancelled");
+    expect(checkpoints.map((checkpoint) => checkpoint.state)).toEqual(["running", "cancelled"]);
+    expect(checkpoints[0]?.messages).toBe(2);
+    expect(events).toContain("agent_cancelled");
+  });
+
+  test("returns aggregated model usage", async () => {
+    const model = new ScriptedModel([
+      {
+        content: "done",
+        toolCalls: [],
+        usage: { inputTokens: 10, outputTokens: 3, totalTokens: 13 },
+      },
+    ]);
+    const result = await new Agent({ model, tools: new ToolRegistry() }).runWithHistory("count");
+
+    expect(result.usage).toMatchObject({ inputTokens: 10, outputTokens: 3, totalTokens: 13, modelRequests: 1 });
+  });
 });

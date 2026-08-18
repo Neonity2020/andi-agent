@@ -1,5 +1,7 @@
 import type { ModelToolDefinition } from "../model/types";
 import type { Tool, ToolExecutionResult } from "./types";
+import type { ToolExecutionContext } from "./types";
+import { isCancellationError, throwIfAborted } from "../runtime/abort";
 
 export class ToolRegistry {
   readonly #tools = new Map<string, Tool>();
@@ -23,7 +25,12 @@ export class ToolRegistry {
     }));
   }
 
-  async execute(name: string, rawArguments: string): Promise<ToolExecutionResult> {
+  async execute(
+    name: string,
+    rawArguments: string,
+    context: ToolExecutionContext = {},
+  ): Promise<ToolExecutionResult> {
+    throwIfAborted(context.signal);
     const tool = this.#tools.get(name);
     if (!tool) return { ok: false, error: `Unknown tool: ${name}` };
 
@@ -35,8 +42,9 @@ export class ToolRegistry {
     }
 
     try {
-      return { ok: true, value: await tool.execute(input) };
+      return { ok: true, value: await tool.execute(input, context) };
     } catch (error) {
+      if (isCancellationError(error)) throw error;
       return {
         ok: false,
         error: error instanceof Error ? error.message : String(error),

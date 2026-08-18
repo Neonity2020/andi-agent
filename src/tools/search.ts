@@ -1,11 +1,13 @@
 import type { Tool } from "./types";
 import { readLimited, processEnvWithoutSecrets } from "./command";
 import { requireRecord, requireString } from "./validation";
+import { cancellationError, throwIfAborted } from "../runtime/abort";
 
 export interface SearchCodeOptions {
   regex?: boolean;
   glob?: string;
   maxResults?: number;
+  signal?: AbortSignal;
 }
 
 export async function searchCode(
@@ -13,6 +15,7 @@ export async function searchCode(
   query: string,
   options: SearchCodeOptions = {},
 ): Promise<{ results: string[]; truncated: boolean }> {
+  throwIfAborted(options.signal);
   if (query.length === 0) throw new Error("Search query cannot be empty");
   if (query.includes("\0") || options.glob?.includes("\0")) throw new Error("Search input contains a null byte");
   const maxResults = options.maxResults ?? 100;
@@ -51,11 +54,19 @@ export async function searchCode(
   } catch (error) {
     throw new Error(`Unable to start ripgrep: ${error instanceof Error ? error.message : String(error)}`);
   }
+  let cancelled = false;
+  const cancelProcess = (): void => {
+    cancelled = true;
+    process.kill();
+  };
+  options.signal?.addEventListener("abort", cancelProcess, { once: true });
   const [exitCode, stdout, stderr] = await Promise.all([
     process.exited,
     readLimited(process.stdout as ReadableStream<Uint8Array>, 64 * 1024),
     readLimited(process.stderr as ReadableStream<Uint8Array>, 16 * 1024),
   ]);
+  options.signal?.removeEventListener("abort", cancelProcess);
+  if (cancelled) throw cancellationError(options.signal);
   if (exitCode !== 0 && exitCode !== 1) throw new Error(`ripgrep failed (${exitCode}): ${stderr.trim()}`);
 
   const allResults = stdout.split("\n").filter(Boolean);
@@ -77,7 +88,7 @@ export function createSearchTool(cwd: string): Tool {
       required: ["query"],
       additionalProperties: false,
     },
-    async execute(input: unknown) {
+    async execute(input: unknown, context) {
       const values = requireRecord(input);
       if (values.regex !== undefined && typeof values.regex !== "boolean") {
         throw new Error("Field 'regex' must be a boolean");
@@ -92,6 +103,7 @@ export function createSearchTool(cwd: string): Tool {
       if (typeof values.regex === "boolean") options.regex = values.regex;
       if (typeof values.glob === "string") options.glob = values.glob;
       if (typeof values.max_results === "number") options.maxResults = values.max_results;
+      if (context?.signal) options.signal = context.signal;
       return searchCode(cwd, requireString(values, "query"), options);
     },
   };

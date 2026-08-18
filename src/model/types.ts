@@ -20,10 +20,23 @@ export interface ModelToolDefinition {
 export interface AssistantTurn {
   content: string | null;
   toolCalls: ToolCall[];
+  usage?: TokenUsage;
+}
+
+export interface TokenUsage {
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+}
+
+export interface RunUsage extends TokenUsage {
+  modelRequests: number;
+  modelDurationMs: number;
 }
 
 export interface CompletionOptions {
   onTextDelta?: (delta: string) => void | Promise<void>;
+  signal?: AbortSignal;
 }
 
 export interface ModelProvider {

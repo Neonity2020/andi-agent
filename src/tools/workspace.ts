@@ -2,6 +2,7 @@ import { lstat, mkdir, readdir, readFile, realpath, writeFile } from "node:fs/pr
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { Tool } from "./types";
 import { requireRecord, requireString } from "./validation";
+import { throwIfAborted } from "../runtime/abort";
 
 interface PathInput {
   path: string;
@@ -132,7 +133,8 @@ export function createWorkspaceTools(workspace: Workspace): Tool[] {
         required: ["path"],
         additionalProperties: false,
       },
-      async execute(input: unknown) {
+      async execute(input: unknown, context) {
+        throwIfAborted(context?.signal);
         const values = requireRecord(input) as unknown as PathInput;
         const path = requireString(values as unknown as Record<string, unknown>, "path");
         workspace.assertToolPath(path);
@@ -147,7 +149,8 @@ export function createWorkspaceTools(workspace: Workspace): Tool[] {
         properties: { path: { type: "string", description: "Directory path; defaults to '.'" } },
         additionalProperties: false,
       },
-      async execute(input: unknown) {
+      async execute(input: unknown, context) {
+        throwIfAborted(context?.signal);
         const values = requireRecord(input);
         const path = values.path === undefined ? "." : requireString(values, "path");
         workspace.assertToolPath(path);
@@ -166,12 +169,14 @@ export function createWorkspaceTools(workspace: Workspace): Tool[] {
         required: ["path", "content"],
         additionalProperties: false,
       },
-      async execute(input: unknown) {
+      async execute(input: unknown, context) {
+        throwIfAborted(context?.signal);
         const values = requireRecord(input) as unknown as WriteInput;
         const record = values as unknown as Record<string, unknown>;
         const path = requireString(record, "path");
         workspace.assertToolPath(path);
         await workspace.write(path, requireString(record, "content"));
+        throwIfAborted(context?.signal);
         return { written: values.path };
       },
     },
