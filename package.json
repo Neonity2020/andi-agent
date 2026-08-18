@@ -3,10 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "bin": {
+    "andi": "./src/cli.ts"
+  },
   "scripts": {
     "start": "bun run src/cli.ts",
     "test": "bun test",
     "test:live": "bun run src/cli.ts --cwd . \"Use read_file to find the package name, then use run_command to run the typecheck script. Do not modify files. Report the package name and whether typecheck passed.\"",
+    "test:exa": "bun run test/exa-live.ts",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {

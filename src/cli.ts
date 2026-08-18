@@ -1,7 +1,8 @@
 #!/usr/bin/env bun
 import { createInterface, type Interface as ReadlineInterface } from "node:readline";
+import { basename } from "node:path";
 import { Agent, type AgentEvent } from "./agent";
-import { loadConfig } from "./config";
+import { loadConfig, type AgentConfig } from "./config";
 import { OpenAICompatibleProvider } from "./model/openai-compatible";
 import { runRepl, type ReplIO } from "./repl";
 import { SessionStore } from "./session";
@@ -12,7 +13,9 @@ import { ToolRegistry } from "./tools/registry";
 import { createSearchTool } from "./tools/search";
 import { Workspace, createWorkspaceTools } from "./tools/workspace";
 import { createSchedulerTools } from "./tools/scheduler";
+import { createWebSearchTool } from "./tools/web-search";
 import { isCancellationError, throwIfAborted } from "./runtime/abort";
+import { applyInstallEnv } from "./runtime/env";
 import { addRunUsage, emptyRunUsage } from "./usage";
 import { RunRecorder } from "./runtime/recorder";
 import { parseScheduleArguments, parseSchedulerArguments } from "./scheduler/parser";
@@ -20,10 +23,12 @@ import { createScheduledAgentRunner } from "./scheduler/runner";
 import { TaskScheduler } from "./scheduler/scheduler";
 import { ScheduleStore } from "./scheduler/store";
 import type { ScheduledTask } from "./scheduler/types";
+import { Tui } from "./tui/tui";
 
 const HELP = `andi-agent - a minimal Bun + TypeScript coding agent
 
 Usage:
+  andi                               start a REPL in the current workspace
   bun run src/cli.ts [--cwd PATH] [--session ID] [--approval ask|never] <task>
   bun run src/cli.ts --repl [--cwd PATH] [--session ID] [initial task]
   bun run src/cli.ts schedule add ID (--at TIME | --every DURATION) [--session ID] -- <task>
@@ -36,7 +41,8 @@ Options:
   --cwd PATH          Workspace root (default: current directory)
   --session ID        Load and save a local conversation session
   --approval MODE     Command approval mode: ask (default) or never
-  --repl              Start a persistent interactive session
+  --repl              Start a persistent interactive session (TUI by default)
+  --plain             Use the classic readline REPL instead of the TUI
   --log-events        Write sanitized run events under .andi-agent/runs/
   -h, --help          Show this help
 
@@ -45,7 +51,9 @@ Environment:
   AGENT_MODEL       Model name (default: agnes-2.5-flash)
   AGENT_BASE_URL    API base URL (default: https://apihub.agnes-ai.com/v1)
   AGENT_MAX_TURNS   Maximum model turns (default: 12)
-  AGENT_MAX_CONTEXT_CHARS  Approximate context budget (default: 120000)`;
+  AGENT_MAX_CONTEXT_CHARS  Approximate context budget (default: 120000)
+  EXA_API_KEY       Optional Exa key that enables the web_search tool
+  EXA_BASE_URL      Exa API base URL (default: https://api.exa.ai)`;
 
 const SCHEDULE_EVENT_TYPES = new Set(["turn_started", "tool_started", "tool_completed", "agent_completed"]);
 
@@ -55,6 +63,7 @@ interface CliArguments {
   session: string | undefined;
   approval: "ask" | "never";
   repl: boolean;
+  plain: boolean;
   logEvents: boolean;
 }
 
@@ -131,6 +140,7 @@ export function parseArguments(args: readonly string[]): CliArguments {
   let session: string | undefined;
   let approval: "ask" | "never" = "ask";
   let repl = false;
+  let plain = false;
   let logEvents = false;
   const taskParts: string[] = [];
 
@@ -153,6 +163,8 @@ export function parseArguments(args: readonly string[]): CliArguments {
       index += 1;
     } else if (argument === "--repl") {
       repl = true;
+    } else if (argument === "--plain") {
+      plain = true;
     } else if (argument === "--log-events") {
       logEvents = true;
     } else if (argument?.startsWith("-")) {
@@ -164,7 +176,7 @@ export function parseArguments(args: readonly string[]): CliArguments {
 
   const task = taskParts.join(" ").trim() || undefined;
   if (!repl && !task) throw new Error("A task is required unless --repl is used");
-  return { cwd, task, session, approval, repl, logEvents };
+  return { cwd, task, session, approval, repl, plain, logEvents };
 }
 
 function createTerminalApprover(
@@ -366,7 +378,28 @@ function createProcessAbortController(message: string): {
   };
 }
 
+export function createAgentToolRegistry(
+  workspace: Workspace,
+  config: AgentConfig,
+  approver?: CommandApprover,
+): ToolRegistry {
+  const approvalOptions = approver ? { approver } : {};
+  const scheduleStore = new ScheduleStore(workspace);
+  const conversationalScheduledRunner = createScheduledAgentRunner({ workspace, config });
+  return new ToolRegistry([
+    ...createWorkspaceTools(workspace),
+    createEditTool(workspace),
+    createSearchTool(workspace.root),
+    createCommandTool(workspace.root, approvalOptions),
+    ...createGitTools(workspace, approvalOptions),
+    ...createSchedulerTools(scheduleStore, { runner: conversationalScheduledRunner }),
+    ...(config.exa ? [createWebSearchTool(config.exa)] : []),
+  ]);
+}
+
 export async function main(args = Bun.argv.slice(2)): Promise<void> {
+  await applyInstallEnv();
+  if (args.length === 0) args = ["--repl"];
   if (args.includes("--help") || args.includes("-h")) {
     console.log(HELP);
     return;
@@ -385,19 +418,26 @@ export async function main(args = Bun.argv.slice(2)): Promise<void> {
   if (cli.repl && !process.stdin.isTTY) throw new Error("--repl requires an interactive TTY");
   const config = loadConfig();
   const workspace = await Workspace.create(cli.cwd);
-  const terminal = cli.repl ? new TerminalChannel() : undefined;
-  const approver = createTerminalApprover(cli.approval, terminal);
-  const approvalOptions = approver ? { approver } : {};
-  const scheduleStore = new ScheduleStore(workspace);
-  const conversationalScheduledRunner = createScheduledAgentRunner({ workspace, config });
-  const tools = new ToolRegistry([
-    ...createWorkspaceTools(workspace),
-    createEditTool(workspace),
-    createSearchTool(workspace.root),
-    createCommandTool(workspace.root, approvalOptions),
-    ...createGitTools(workspace, approvalOptions),
-    ...createSchedulerTools(scheduleStore, { runner: conversationalScheduledRunner }),
-  ]);
+  const useTui =
+    cli.repl && !cli.plain && process.stdin.isTTY === true && process.stdout.isTTY === true;
+  const terminal = cli.repl && !useTui ? new TerminalChannel() : undefined;
+  let approver = createTerminalApprover(cli.approval, terminal);
+  let tui: Tui | undefined;
+  if (useTui) {
+    tui = new Tui({
+      stdin: process.stdin,
+      sink: process.stdout,
+      columns: () => process.stdout.columns || 80,
+      status: {
+        model: config.model,
+        session: cli.session ?? "memory-only",
+        cwd: basename(workspace.root),
+      },
+      colorEnabled: !process.env.NO_COLOR,
+    });
+    approver = cli.approval === "ask" ? tui.approve : undefined;
+  }
+  const tools = createAgentToolRegistry(workspace, config, approver);
   const model = new OpenAICompatibleProvider(config);
   const reporter = createEventReporter();
   const recorder = cli.logEvents ? new RunRecorder(workspace) : undefined;
@@ -407,7 +447,8 @@ export async function main(args = Bun.argv.slice(2)): Promise<void> {
     maxTurns: config.maxTurns,
     maxContextChars: config.maxContextChars,
     async onEvent(event) {
-      reporter.report(event);
+      if (tui) tui.handleAgentEvent(event);
+      else reporter.report(event);
       await recorder?.record(event);
     },
   });
@@ -415,6 +456,25 @@ export async function main(args = Bun.argv.slice(2)): Promise<void> {
   const sessions = cli.session ? new SessionStore(workspace) : undefined;
   const sessionSnapshot = cli.session ? await sessions?.loadSnapshot(cli.session) : undefined;
   const history = sessionSnapshot?.messages ?? [];
+  if (cli.repl && tui) {
+    tui.start();
+    try {
+      await runRepl({
+        agent,
+        io: tui,
+        initialHistory: history,
+        initialUsage: sessionSnapshot?.usage ?? emptyRunUsage(),
+        ...(cli.task ? { initialTask: cli.task } : {}),
+        ...(cli.session ? { sessionId: cli.session } : {}),
+        ...(sessions ? { sessionStore: sessions } : {}),
+        beforeTask: () => tui.beginRun(),
+        onResult: (result) => tui.handleResult(result),
+      });
+    } finally {
+      tui.close();
+    }
+    return;
+  }
   if (cli.repl && terminal) {
     const io: ReplIO = {
       async read(prompt) {

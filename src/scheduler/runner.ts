@@ -10,6 +10,7 @@ import { createGitTools } from "../tools/git";
 import { ToolRegistry } from "../tools/registry";
 import { createSearchTool } from "../tools/search";
 import { createWorkspaceTools, type Workspace } from "../tools/workspace";
+import { createWebSearchTool } from "../tools/web-search";
 import { addRunUsage } from "../usage";
 import type { ScheduledTaskRunner } from "./types";
 
@@ -29,6 +30,7 @@ export function createScheduledAgentRunner(options: ScheduledAgentRunnerOptions)
     createSearchTool(options.workspace.root),
     createCommandTool(options.workspace.root),
     ...createGitTools(options.workspace),
+    ...(options.config.exa ? [createWebSearchTool(options.config.exa)] : []),
   ]);
   const sessions = new SessionStore(options.workspace);
   const recorder = new RunRecorder(options.workspace);

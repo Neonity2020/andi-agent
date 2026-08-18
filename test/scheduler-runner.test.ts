@@ -39,6 +39,7 @@ describe("createScheduledAgentRunner", () => {
         baseUrl: "https://example.invalid/v1",
         maxTurns: 3,
         maxContextChars: 10_000,
+        exa: { apiKey: "exa-key", baseUrl: "https://api.exa.test" },
       },
     });
     const task: ScheduledTask = {
@@ -63,5 +64,6 @@ describe("createScheduledAgentRunner", () => {
     expect(log).not.toContain("do scheduled work");
     expect(receivedToolNames).not.toContain("schedule_add");
     expect(receivedToolNames).not.toContain("schedule_run");
+    expect(receivedToolNames).toContain("web_search");
   });
 });

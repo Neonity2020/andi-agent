@@ -2,7 +2,7 @@
 
 ## Project Structure & Module Organization
 
-Source code lives in `src/`. `agent.ts` owns the agent loop, `cli.ts` is the Bun entry point, and `repl.ts` implements persistent sessions. Model transport lives in `src/model/`, coding tools in `src/tools/`, and local scheduled-task parsing, storage, and execution in `src/scheduler/`.
+Source code lives in `src/`. `agent.ts` owns the agent loop, `cli.ts` is the Bun entry point, and `repl.ts` implements persistent sessions. Model transport lives in `src/model/`, coding tools in `src/tools/`, the terminal UI foundation and orchestrator in `src/tui/`, and local scheduled-task parsing, storage, and execution in `src/scheduler/`.
 
 Tests in `test/` mirror source modules, for example `test/agent.test.ts`. Architecture plans belong in `.plans/`. The `docs/` directory is the sandbox for testing the Agent's generation capabilities, including HTML, images, screenshots, and other generated artifacts. Never commit runtime state from `.andi-agent/`.
 
@@ -33,4 +33,4 @@ Pull requests should explain behavior changes, safety implications, and verifica
 
 ## Security & Configuration
 
-Copy `.env.example` to `.env`; never commit API keys. Preserve workspace path checks, command approval gates, output limits, and Git safeguards. Treat all `.andi-agent/` sessions and run logs as sensitive local state.
+Copy `.env.example` to `.env`; never commit Agnes or Exa API keys. Preserve workspace path checks, command approval gates, output limits, and Git safeguards. Treat all `.andi-agent/` sessions and run logs as sensitive local state.

@@ -176,4 +176,20 @@ describe("Agent", () => {
 
     expect(result.usage).toMatchObject({ inputTokens: 10, outputTokens: 3, totalTokens: 13, modelRequests: 1 });
   });
+
+  test("default system prompt points at the kb and honors a custom kbPath", async () => {
+    const defaultModel = new ScriptedModel([{ content: "ok", toolCalls: [] }]);
+    const defaultAgent = new Agent({ model: defaultModel, tools: new ToolRegistry() });
+    await defaultAgent.run("ready");
+    const system = defaultModel.requests[0]?.[0] as Message | undefined;
+    expect(system?.role).toBe("system");
+    expect(system?.content).toContain('If \"kb/README.md\" exists in the current workspace');
+
+    const customModel = new ScriptedModel([{ content: "ok", toolCalls: [] }]);
+    const customAgent = new Agent({ model: customModel, tools: new ToolRegistry(), kbPath: ".knowledge" });
+    await customAgent.run("ready");
+    const customSystem = customModel.requests[0]?.[0] as Message | undefined;
+    expect(customSystem?.role).toBe("system");
+    expect(customSystem?.content).toContain('If \".knowledge/README.md\" exists in the current workspace');
+  });
 });

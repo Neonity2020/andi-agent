@@ -9,7 +9,7 @@
 ```bash
 bun install
 cp .env.example .env
-# 编辑 .env，填写 AGNES_API_KEY
+# 编辑 .env，填写 AGNES_API_KEY；如需联网搜索，再填写 EXA_API_KEY
 bun run start -- --cwd . "阅读 README，并创建一个简短的项目摘要"
 ```
 
@@ -21,12 +21,60 @@ Bun 会自动加载 `.env`。默认调用 Agnes OpenAI-compatible Chat Completio
 
 如需切换其他兼容服务，可覆盖 `AGENT_BASE_URL` 和 `AGENT_MODEL`。`AGENT_API_KEY` 仍作为通用 API Key 变量兼容保留，但 Agnes 测试建议使用 `AGNES_API_KEY`。
 
+### Exa Web Search
+
+在 `.env` 中设置 `EXA_API_KEY` 后，普通对话 Agent 和定时任务 Agent 会获得 `web_search` 工具：
+
+```text
+EXA_API_KEY=your-exa-key
+EXA_BASE_URL=https://api.exa.ai
+```
+
+未配置 Exa Key 时工具不会注册，其他功能不受影响。工具支持查询、1–10 条结果以及可选域名过滤，并返回标题、URL、发布日期、作者和高亮摘要。外部网页内容会作为不可信数据处理；Agent 应忽略网页中的指令，并在答案中引用结果 URL。API 协议依据 [Exa Search API 官方文档](https://exa.ai/docs/reference/search)。
+
+配置 Key 后可手动执行一次真实 API 冒烟测试：
+
+```bash
+bun run test:exa
+```
+
+## 全局 `andi` 命令
+
+在仓库内执行一次 `bun link`，即可把启动方式注册为全局 `andi` 命令（链接位于 `~/.bun/bin/andi`，需要 `~/.bun/bin` 在 PATH 中）：
+
+```bash
+bun link
+cd ~/任意项目
+andi                      # 在当前 workspace 启动 TUI 交互会话
+andi --session real-dev   # 带持久 session 启动
+andi --plain              # 使用经典 readline 界面
+andi schedule list        # 管理当前 workspace 的定时任务
+andi "修复失败的测试"      # 单次任务模式
+```
+
+不带任何参数运行 `andi` 等价于 `--repl`，workspace 始终是当前目录。API 配置按优先级解析：shell 环境变量 > 当前目录的 `.env`（Bun 自动加载）> andi-agent 安装目录的 `.env`，因此在其他项目中运行 `andi` 无需重复配置 Key。
+
 ## 命令
 
 ```bash
 bun run start -- --help
 bun run typecheck
 bun test
+```
+
+### TUI 交互界面
+
+在 TTY 环境下，`--repl`（包括零参数 `andi`）默认启动内联式 TUI：完成的用户输入、助手回复（轻量 Markdown 渲染）和工具结果（`✓ 工具 · 耗时`）会输出到终端原生 scrollback，屏幕底部只保留一个实时区域，显示 spinner、运行中的工具、流式输出预览、输入行（`❯`）和状态栏（模型 · session · 工作区）。
+
+命令审批会在 scrollback 中显示待批准命令，底部以 `approve? [y/N]` 提示：按 `y` 批准，其他任意键拒绝。运行中按 Ctrl-C 取消当前轮，空闲时按 Ctrl-C 退出；输入流关闭（Ctrl-D）也会退出。
+
+输入行支持完整编辑：方向键/Home/End 移动，Alt-B / Alt-F / Ctrl-左右键按词移动，Ctrl-U / Ctrl-K 删除到行首/行尾，Ctrl-W 删除前一个词，↑/↓ 翻阅历史（自动保存草稿），并支持 bracketed paste（多行粘贴合并为一行）。中文与 emoji 按终端单元格宽度正确对齐。设置 `NO_COLOR` 可关闭颜色。
+
+如需回到经典 readline 界面：
+
+```bash
+andi --plain
+bun run start -- --repl --plain
 ```
 
 ### 常驻 REPL
@@ -153,6 +201,7 @@ bun run test:live
 - `write_file`：创建或覆盖工作区内的 UTF-8 文件；
 - `edit_file`：仅在旧文本唯一匹配时进行精确替换；
 - `run_command`：无 shell 地运行白名单内的测试、检查、构建和只读 Git 命令；
+- `web_search`：通过可选 Exa API 搜索当前网络信息并返回可引用来源；
 - 路径穿越与符号链接写入防护；
 - 命令超时、输出截断、环境变量脱敏；
 - Ctrl-C 贯穿模型请求、SSE reader 和长运行子进程的取消链路；

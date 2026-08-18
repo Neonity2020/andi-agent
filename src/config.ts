@@ -1,9 +1,15 @@
+export interface ExaConfig {
+  apiKey: string;
+  baseUrl: string;
+}
+
 export interface AgentConfig {
   apiKey: string;
   model: string;
   baseUrl: string;
   maxTurns: number;
   maxContextChars: number;
+  exa?: ExaConfig;
 }
 
 export function loadConfig(env: Record<string, string | undefined> = process.env): AgentConfig {
@@ -22,11 +28,21 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     throw new Error("AGENT_MAX_CONTEXT_CHARS must be a positive integer");
   }
 
+  const exaApiKey = env.EXA_API_KEY?.trim();
+
   return {
     apiKey,
     model: env.AGENT_MODEL?.trim() || "agnes-2.5-flash",
     baseUrl: env.AGENT_BASE_URL?.trim() || "https://apihub.agnes-ai.com/v1",
     maxTurns,
     maxContextChars,
+    ...(exaApiKey
+      ? {
+          exa: {
+            apiKey: exaApiKey,
+            baseUrl: env.EXA_BASE_URL?.trim() || "https://api.exa.ai",
+          },
+        }
+      : {}),
   };
 }
