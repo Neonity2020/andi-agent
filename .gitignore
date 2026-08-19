@@ -6,4 +6,9 @@ node_modules/
 coverage/
 *.tsbuildinfo
 .DS_Store
+<<<<<<< HEAD
 src/web/packages/web/dist/
+
+# pnpm artifacts from the marketing landing page dev server (repo itself uses bun)
+pnpm-lock.yaml
+pnpm-workspace.yaml
