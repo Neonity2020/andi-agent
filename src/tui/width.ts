@@ -97,11 +97,21 @@ function wrapLogicalLine(line: string, width: number): string[] {
   let current = "";
   let used = 0;
   let pendingSpace = false;
+  let leading = true;
   for (const token of tokens) {
     if (token === " ") {
-      pendingSpace = true;
+      // Leading whitespace is indentation, not a wrap artifact: keep it
+      // verbatim on the first output line (multi-line editor rows, indented
+      // source) instead of collapsing it away.
+      if (leading) {
+        current += " ";
+        used += 1;
+      } else {
+        pendingSpace = true;
+      }
       continue;
     }
+    leading = false;
     for (const part of textWidth(token) > width ? splitOversized(token, width) : [token]) {
       const partWidth = textWidth(part);
       const spaceWidth = pendingSpace && current.length > 0 ? 1 : 0;

@@ -88,21 +88,31 @@ export interface ReplOptions {
   onError?: () => void;
 }
 
-const REPL_HELP = `/help     Show REPL commands
-/status   Show session, run, and history status
-/usage    Show token and model timing totals
-/recover  Repair incomplete tool-call history
-/clear    Clear in-memory and persisted conversation history
-/memory [list]          List durable workspace memories
-/memory search <query>  Search durable workspace memories
-/memory show <id>       Show one durable workspace memory
-/models                 Select a cached Chat Completions model
-/models refresh         Refresh the current provider's model cache
-/provider               Show configured model providers
-/provider <id>          Switch provider (for example: /provider minimax)
-/skills                 List discovered skills
+export interface ReplCommand {
+  name: string;
+  description: string;
+}
+
+// Single source of truth for slash commands: /help output and the TUI's
+// inline completion list both derive from it.
+export const REPL_COMMANDS: readonly ReplCommand[] = [
+  { name: "/help", description: "Show REPL commands" },
+  { name: "/status", description: "Show session, run, and history status" },
+  { name: "/usage", description: "Show token and model timing totals" },
+  { name: "/recover", description: "Repair incomplete tool-call history" },
+  { name: "/clear", description: "Clear in-memory and persisted conversation history" },
+  { name: "/memory", description: "List durable workspace memories" },
+  { name: "/memory search", description: "Search durable workspace memories" },
+  { name: "/memory show", description: "Show one durable workspace memory" },
+  { name: "/models", description: "Select a cached Chat Completions model" },
+  { name: "/models refresh", description: "Refresh the current provider's model cache" },
+  { name: "/provider", description: "Show or switch model providers" },
+  { name: "/skills", description: "List discovered skills" },
+  { name: "/exit", description: "Exit the REPL" },
+];
+
+const REPL_HELP = `${REPL_COMMANDS.map((command) => `${command.name.padEnd(24)}${command.description}`).join("\n")}
 /<skill-name> [args]     Invoke a skill explicitly
-/exit     Exit the REPL
 Ctrl-D    Exit immediately from any TUI state`;
 
 export async function runRepl(options: ReplOptions): Promise<Message[]> {

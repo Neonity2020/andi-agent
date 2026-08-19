@@ -43,7 +43,7 @@ interface Harness {
   advance: (ms: number) => void;
 }
 
-function createHarness(): Harness {
+function createHarness(commands?: readonly { name: string; description: string }[]): Harness {
   const stdin = new FakeStdin();
   const chunks: string[] = [];
   let clock = 0;
@@ -51,6 +51,8 @@ function createHarness(): Harness {
     stdin,
     sink: { write: (data) => chunks.push(data) },
     columns: () => 60,
+    rows: () => 24,
+    ...(commands ? { commands } : {}),
     status: { model: "agnes-2.5-flash", session: "test", cwd: "/tmp/ws" },
     colorEnabled: false,
     animate: false,
@@ -79,6 +81,88 @@ describe("Tui", () => {
     stdin.send("\r");
     await expect(pending).resolves.toBe("hello world");
     expect(output()).toContain("❯ hello world");
+  });
+
+  test("edits multi-line drafts with ctrl-j and submits them whole", async () => {
+    const { tui, stdin, output } = createHarness();
+    tui.start();
+    const pending = tui.read("you> ");
+    stdin.send("first line");
+    stdin.send("\n");
+    stdin.send("second line");
+    expect(output()).toContain("❯ first line");
+    expect(output()).toContain("  second line");
+    stdin.send("\r");
+    await expect(pending).resolves.toBe("first line\nsecond line");
+  });
+
+  test("keeps pasted newlines in the draft", async () => {
+    const { tui, stdin } = createHarness();
+    tui.start();
+    const pending = tui.read("you> ");
+    stdin.send("\x1b[200~pasted one\ntwo\x1b[201~");
+    stdin.send("\r");
+    await expect(pending).resolves.toBe("pasted one\ntwo");
+  });
+
+  test("shows slash command completion and runs the selected entry", async () => {
+    const commands = [
+      { name: "/help", description: "Show REPL commands" },
+      { name: "/models", description: "Select a model" },
+      { name: "/models refresh", description: "Refresh the cache" },
+      { name: "/status", description: "Show status" },
+    ];
+    const { tui, stdin, output } = createHarness(commands);
+    tui.start();
+    const pending = tui.read("you> ");
+    stdin.send("/mo");
+    expect(output()).toContain("/models");
+    expect(output()).toContain("/models refresh");
+    expect(output()).not.toContain("/help");
+    // Down selects the second match; enter runs it directly.
+    stdin.send("\x1b[B");
+    stdin.send("\r");
+    await expect(pending).resolves.toBe("/models refresh");
+  });
+
+  test("tab completes the selected command without submitting", () => {
+    const commands = [{ name: "/help", description: "Show REPL commands" }];
+    const { tui, stdin, output } = createHarness(commands);
+    tui.start();
+    tui.read("you> ");
+    stdin.send("/he");
+    stdin.send("\t");
+    expect(output()).toContain("❯ /help ");
+  });
+
+  test("escape dismisses completion and arrows keep editing history", async () => {
+    const commands = [{ name: "/help", description: "Show REPL commands" }];
+    const { tui, stdin, output } = createHarness(commands);
+    tui.start();
+    const first = tui.read("you> ");
+    stdin.send("/models\r");
+    await first;
+    const second = tui.read("you> ");
+    stdin.send("/hel");
+    expect(output()).toContain("/help");
+    stdin.send("\x1b");
+    // Completion dismissed: up now navigates history instead of the list.
+    stdin.send("\x1b[A");
+    stdin.send("\r");
+    await expect(second).resolves.toBe("/models");
+  });
+
+  test("hides completion for plain text and exact commands still submit", async () => {
+    const commands = [{ name: "/help", description: "Show REPL commands" }];
+    const { tui, stdin, output } = createHarness(commands);
+    tui.start();
+    const pending = tui.read("you> ");
+    stdin.send("plain text");
+    expect(output()).not.toContain("Show REPL commands");
+    stdin.send("\x15");
+    stdin.send("/help");
+    stdin.send("\r");
+    await expect(pending).resolves.toBe("/help");
   });
 
   test("renders agent turns, tools, and completion into scrollback", async () => {

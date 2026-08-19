@@ -74,6 +74,13 @@ describe("wrapText", () => {
     expect(wrapText("aa bb", 2)).toEqual(["aa", "bb"]);
   });
 
+  test("preserves leading indentation on the first output line", () => {
+    expect(wrapText("  second line", 60)).toEqual(["  second line"]);
+    expect(wrapText("    const x = 1;", 60)).toEqual(["    const x = 1;"]);
+    // Wrapped continuation lines still start without the indentation.
+    expect(wrapText("  one two three", 8)).toEqual(["  one", "two", "three"]);
+  });
+
   test("rejects non-positive widths", () => {
     expect(() => wrapText("x", 0)).toThrow("positive integer");
   });

@@ -33,15 +33,22 @@ export interface TuiStatus {
   cwd: string;
 }
 
+export interface TuiCommandHint {
+  name: string;
+  description: string;
+}
+
 export interface TuiOptions {
   stdin: TuiStdin;
   sink: ScreenSink;
   columns: () => number;
+  rows?: () => number;
   status: TuiStatus;
   colorEnabled?: boolean;
   now?: () => number;
   animate?: boolean;
   history?: readonly string[];
+  commands?: readonly TuiCommandHint[];
 }
 
 type Mode = "input" | "running" | "approval" | "select";
@@ -68,6 +75,18 @@ const PAINT_COALESCE_MS = 16;
 const SPINNER_MS = 90;
 const ESCAPE_DELAY_MS = 25;
 const SELECT_PAGE_SIZE = 8;
+const COMPLETION_PAGE_SIZE = 8;
+const COMPLETION_MIN_HEIGHT = 6;
+
+interface CursorCell {
+  row: number;
+  column: number;
+}
+
+interface CompletionState {
+  selectedIndex: number;
+  dismissed: boolean;
+}
 
 export class Tui {
   readonly #stdin: TuiStdin;
@@ -78,6 +97,8 @@ export class Tui {
   readonly #activity = new ActivityState();
   readonly #theme: Theme;
   readonly #columns: () => number;
+  readonly #rows: () => number;
+  readonly #commands: readonly TuiCommandHint[];
   readonly #status: TuiStatus;
   readonly #now: () => number;
   readonly #animate: boolean;
@@ -86,6 +107,7 @@ export class Tui {
   #waiters: ReadWaiter[] = [];
   #approval: ApprovalRequest | undefined;
   #selection: SelectRequest | undefined;
+  #completion: CompletionState = { selectedIndex: 0, dismissed: false };
   #interruptHandler: (() => void) | undefined;
   #exitHandler: (() => void) | undefined;
   #turnSealedOutput = true;
@@ -94,7 +116,7 @@ export class Tui {
   #paintQueued = false;
   #closed = false;
   #lastFrame: string[] | null = null;
-  #lastCursorCell: number | undefined;
+  #lastCursorCell: CursorCell | undefined;
 
   constructor(options: TuiOptions) {
     this.#stdin = options.stdin;
@@ -103,6 +125,8 @@ export class Tui {
     this.#editor = new LineEditor(options.history);
     this.#theme = createTheme(options.colorEnabled ?? false);
     this.#columns = options.columns;
+    this.#rows = options.rows ?? (() => 24);
+    this.#commands = [...(options.commands ?? [])];
     this.#status = options.status;
     this.#now = options.now ?? (() => Date.now());
     this.#animate = options.animate ?? true;
@@ -356,6 +380,11 @@ export class Tui {
       return;
     }
 
+    if (this.#mode === "input" && this.#completionActive() && this.#handleCompletionKey(event)) {
+      this.#schedulePaint();
+      return;
+    }
+
     const action = this.#editor.handleKey(event);
     switch (action.type) {
     case "submitted": {
@@ -364,6 +393,7 @@ export class Tui {
       const waiter = this.#waiters.shift();
       if (waiter) waiter.resolve(line);
       else this.#mode = "running";
+      this.#resetCompletion();
       this.#schedulePaint();
       return;
     }
@@ -376,6 +406,11 @@ export class Tui {
     case "escape":
       return;
     case "changed":
+      // A changed draft restarts the completion lifecycle at the top entry.
+      this.#completion.dismissed = false;
+      this.#completion.selectedIndex = 0;
+      this.#schedulePaint();
+      return;
     case "none":
     default:
       this.#schedulePaint();
@@ -444,6 +479,84 @@ export class Tui {
     selection.resolve(value);
   }
 
+  // ---- Slash command completion ----
+
+  // Active while the draft is a bare "/word" (no whitespace): the command
+  // list floats above the input line and steals the navigation keys.
+  #completionActive(): boolean {
+    if (this.#commands.length === 0 || this.#completion.dismissed) return false;
+    return /^\/\S*$/.test(this.#editor.getText());
+  }
+
+  #completionMatches(): readonly TuiCommandHint[] {
+    const query = this.#editor.getText().slice(1).toLocaleLowerCase();
+    const scored = this.#commands
+      .map((command) => {
+        const name = command.name.toLocaleLowerCase();
+        const score = name.startsWith(`/${query}`)
+          ? 2
+          : name.slice(1).includes(query)
+            ? 1
+            : -1;
+        return { command, score };
+      })
+      .filter((entry) => entry.score >= 0)
+      .sort((left, right) => right.score - left.score || left.command.name.localeCompare(right.command.name));
+    return scored.slice(0, COMPLETION_PAGE_SIZE).map((entry) => entry.command);
+  }
+
+  // Returns true when the event was consumed by the completion layer.
+  #handleCompletionKey(event: KeyEvent): boolean {
+    switch (event.key) {
+    case "up": {
+      const items = this.#completionMatches();
+      if (items.length === 0) return false;
+      this.#completion.selectedIndex = (this.#completion.selectedIndex - 1 + items.length) % items.length;
+      return true;
+    }
+    case "down": {
+      const items = this.#completionMatches();
+      if (items.length === 0) return false;
+      this.#completion.selectedIndex = (this.#completion.selectedIndex + 1) % items.length;
+      return true;
+    }
+    case "tab": {
+      const selected = this.#completionMatches()[this.#completion.selectedIndex];
+      if (!selected) return false;
+      this.#editor.setText(`${selected.name} `);
+      this.#completion.dismissed = false;
+      return true;
+    }
+    case "enter": {
+      const text = this.#editor.getText();
+      const exact = this.#commands.some((command) => command.name === text);
+      if (exact) return false;
+      const selected = this.#completionMatches()[this.#completion.selectedIndex];
+      if (!selected) return false;
+      this.#editor.setText(selected.name);
+      const action = this.#editor.handleKey({ key: "enter" });
+      if (action.type === "submitted") {
+        const line = action.line;
+        this.#seal(renderUserEcho(line, this.#width(), this.#theme));
+        const waiter = this.#waiters.shift();
+        if (waiter) waiter.resolve(line);
+        else this.#mode = "running";
+      }
+      this.#resetCompletion();
+      return true;
+    }
+    case "escape":
+      this.#completion.dismissed = true;
+      return true;
+    default:
+      return false;
+    }
+  }
+
+  #resetCompletion(): void {
+    this.#completion = { selectedIndex: 0, dismissed: false };
+  }
+
   #filteredSelectionItems(selection: SelectRequest): readonly ReplSelectItem[] {
     const query = selection.query.trim().toLocaleLowerCase();
     if (query.length === 0) return selection.items;
@@ -488,7 +601,8 @@ export class Tui {
     } else if (this.#mode === "running") {
       lines.push(this.#theme.style.dim("ctrl-c to cancel"));
     } else {
-      lines.push(this.#inputLine(width));
+      lines.push(...this.#completionLines(width));
+      lines.push(...this.#inputLines(width));
     }
 
     lines.push(this.#statusLine(width));
@@ -497,33 +611,36 @@ export class Tui {
     // compute its target cell up front: a left/right arrow move changes the
     // cursor but leaves the frame text identical, and must still reposition it.
     const cursorCell = this.#mode === "input"
-      ? this.#cursorColumn(width)
+      ? this.#cursorCell(width)
       : undefined;
 
     // The spinner timer repaints constantly; skip writes when nothing
     // changed (idle) so the terminal is untouched between keystrokes. The
     // cursor cell is included so pure cursor moves are never dropped.
-    if (this.#lastFrame !== null && this.#framesEqual(this.#lastFrame, lines) && cursorCell === this.#lastCursorCell) return;
+    if (this.#lastFrame !== null && this.#framesEqual(this.#lastFrame, lines) && this.#cursorCellsEqual(cursorCell, this.#lastCursorCell)) return;
     this.#lastFrame = lines;
     this.#lastCursorCell = cursorCell;
     this.#screen.render(lines);
 
     if (this.#mode === "input" && cursorCell !== undefined) {
-      this.#screen.positionCursor(2, cursorCell);
+      this.#screen.positionCursor(cursorCell.row, cursorCell.column);
       this.#write(showCursor());
     } else {
       this.#write(hideCursor());
     }
   }
 
-  #cursorColumn(width: number): number {
-    // The input line is always the second row from the bottom of the
-    // region (status bar is last); the screen tracks the cursor there.
-    const prefixWidth = textWidth(this.#theme.symbols.prompt) + 1;
-    const cursorWidth = textWidth(this.#editor.getClusters().slice(0, this.#editor.getCursor()).join(""));
-    const budget = Math.max(width - prefixWidth, 1);
-    const scroll = Math.max(0, cursorWidth - budget + 1);
-    return Math.min(Math.max(prefixWidth + cursorWidth - scroll + 1, 1), width);
+  #cursorCellsEqual(left: CursorCell | undefined, right: CursorCell | undefined): boolean {
+    if (left === undefined || right === undefined) return left === right;
+    return left.row === right.row && left.column === right.column;
+  }
+
+  // Cursor cell in InlineScreen coordinates (row counted from the region
+  // bottom): one status line below the input area, then the visible input
+  // rows between the cursor and the bottom of the scrolled editor.
+  #cursorCell(width: number): CursorCell {
+    const visible = this.#visibleInput();
+    return { row: 2 + (visible.rows.length - 1 - visible.cursorRow), column: this.#cursorColumnInRow(width) };
   }
 
   #selectionLines(selection: SelectRequest, width: number): string[] {
@@ -553,16 +670,63 @@ export class Tui {
     return lines;
   }
 
-  #inputLine(width: number): string {
+  // The editor's visible slice: grows with content up to a third of the
+  // terminal (minimum COMPLETION_MIN_HEIGHT lines), then scrolls to keep the
+  // caret row on screen.
+  #visibleInput(): { rows: string[]; cursorRow: number } {
+    const lineCount = this.#editor.getLineCount();
+    const rows = Array.from({ length: lineCount }, (_value, row) => this.#editor.getRowClusters(row).join(""));
+    const maxHeight = Math.max(COMPLETION_MIN_HEIGHT, Math.floor(this.#rows() / 3));
+    if (rows.length <= maxHeight) return { rows, cursorRow: this.#editor.getCursorRow() };
+    const cursorRow = this.#editor.getCursorRow();
+    const start = Math.min(Math.max(cursorRow - (maxHeight - 1), 0), rows.length - maxHeight);
+    return { rows: rows.slice(start, start + maxHeight), cursorRow: cursorRow - start };
+  }
+
+  #inputLines(width: number): string[] {
     const prefix = `${this.#theme.brandText(this.#theme.symbols.prompt)} `;
     const prefixWidth = textWidth(this.#theme.symbols.prompt) + 1;
     const budget = Math.max(width - prefixWidth, 4);
-    const text = this.#editor.getText();
-    if (textWidth(text) <= budget) return prefix + text;
-    // Horizontal scroll: keep a window that ends at the cursor visible.
-    const cursorWidth = textWidth(this.#editor.getClusters().slice(0, this.#editor.getCursor()).join(""));
+    const visible = this.#visibleInput();
+    const cursorRow = this.#editor.getCursorRow();
+    const cursorWidth = textWidth(this.#editor.getRowClusters(cursorRow).slice(0, this.#editor.getCursorCol()).join(""));
     const scroll = Math.max(0, cursorWidth - budget + 1);
-    return prefix + sliceByCells(text, scroll, budget);
+    return visible.rows.map((text, row) => {
+      const lead = row === 0 ? prefix : " ".repeat(prefixWidth);
+      // Only the caret row scrolls horizontally; other rows show their tail.
+      const body = row === visible.cursorRow
+        ? sliceByCells(text, scroll, budget)
+        : sliceByCells(text, Math.max(0, textWidth(text) - budget), budget);
+      return lead + body;
+    });
+  }
+
+  // Terminal column of the caret on its visible input row.
+  #cursorColumnInRow(width: number): number {
+    const prefixWidth = textWidth(this.#theme.symbols.prompt) + 1;
+    const before = this.#editor.getRowClusters(this.#editor.getCursorRow()).slice(0, this.#editor.getCursorCol()).join("");
+    const cursorWidth = textWidth(before);
+    const budget = Math.max(width - prefixWidth, 1);
+    const scroll = Math.max(0, cursorWidth - budget + 1);
+    return Math.min(Math.max(prefixWidth + cursorWidth - scroll + 1, 1), width);
+  }
+
+  #completionLines(width: number): string[] {
+    if (this.#mode !== "input" || !this.#completionActive()) return [];
+    const items = this.#completionMatches();
+    const selectedIndex = Math.min(this.#completion.selectedIndex, Math.max(items.length - 1, 0));
+    if (items.length === 0) return [this.#theme.style.dim(`  no matching commands`)];
+    const lines = items.map((item, index) => {
+      const marker = index === selectedIndex ? this.#theme.symbols.prompt : " ";
+      const label = `${marker} ${item.name}`;
+      const description = item.description.length > 0
+        ? `  ${this.#theme.style.dim(sliceByCells(item.description, 0, Math.max(width - textWidth(label) - 4, 0)))}`
+        : "";
+      const line = `${label}${description}`;
+      return index === selectedIndex ? this.#theme.brandText(line) : line;
+    });
+    lines.push(this.#theme.style.dim("  ↑↓ select · tab complete · enter run · esc dismiss"));
+    return lines;
   }
 
   #statusLine(width: number): string {

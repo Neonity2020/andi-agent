@@ -110,6 +110,15 @@
 - 表格渲染覆盖最终 TUI 回复输出，不改变流式文本、代码块和普通 Markdown 行为。
 - 配合 `DEFAULT_SYSTEM_PROMPT` 紧凑表格输出引导，保证在 60/80 列及更宽终端下均能紧凑居中对齐、排版严整。
 
+### TUI 多行输入与斜杠命令补全（参考 OpenCode）
+
+- `LineEditor`（`src/tui/input.ts`）重构为多行编辑器：内部状态为 `string[][]`（每行 grapheme 数组）+ 光标行列，`Enter` 提交整段、`Ctrl+J`（decoder 中 `0x0a → newline`）换行、退格/删除跨行合并、粘贴保留换行、`setText()` 服务补全插入。
+- 上下键语义对齐 OpenCode：行内移动光标（col clamp），首行 up / 末行 down 才切换历史；历史支持多行草稿往返。
+- `Tui`（`src/tui/tui.ts`）输入区自动增高：上限 `max(6, floor(终端高度/3))`（`TuiOptions.rows`，cli 传 `process.stdout.rows`），超高垂直滚动保持光标可见；光标行水平滚动，续行以缩进对齐 `❯` 前缀。光标定位升级为 `{row, column}` 二元组（`#cursorCell`），`InlineScreen.positionCursor` 从底向上计数。
+- 斜杠命令补全：`REPL_COMMANDS`（`src/repl.ts` 导出，`/help` 文本由它生成）传入 `TuiOptions.commands`；输入匹配 `/^\/\S*$/` 时在输入行上方弹出补全列表（前缀匹配 ×2 > includes ×1 排序，最多 8 条），`↑↓` 选择、`tab` 补全、`enter` 直接执行选中命令、`esc` 关闭（文本变化后重新激活）；补全激活时劫持方向键，不再走历史。
+- `wrapText`（`src/tui/width.ts`）修复：保留行首缩进（此前被折叠丢弃），续行换行点空格仍丢弃；多行输入渲染与缩进源码显示依赖此行为。
+- 测试：`test/input.test.ts` 多行拆分/合并/历史边界/粘贴/setText；`test/tui.test.ts` 多行渲染提交、补全弹出/选择/Tab/Enter/Esc/历史劫持；`test/width.test.ts` 行首缩进保留。
+
 ## 关键文件
 
 - `.plans/011-model-switching.md`：模型切换与 TUI picker 方案。

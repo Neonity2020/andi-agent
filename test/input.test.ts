@@ -29,6 +29,7 @@ describe("InputDecoder", () => {
 
   test("maps control bytes to semantic keys", () => {
     expect(decode(bytes("\r"))).toEqual([{ key: "enter" }]);
+    expect(decode(bytes("\n"))).toEqual([{ key: "newline" }]);
     expect(decode(bytes("\t"))).toEqual([{ key: "tab" }]);
     expect(decode(bytes("\x7f"))).toEqual([{ key: "backspace" }]);
     expect(decode(bytes("\x03"))).toEqual([{ key: "interrupt" }]);
@@ -92,13 +93,13 @@ describe("LineEditor", () => {
     expect(editor.handleKey({ key: "left" })).toEqual({ type: "changed" });
     expect(editor.handleKey({ key: "text", text: "X" })).toEqual({ type: "changed" });
     expect(editor.getText()).toBe("abXc");
-    expect(editor.getCursor()).toBe(3);
+    expect(editor.getCursorCol()).toBe(3);
   });
 
   test("deletes clusters, keeping emoji intact", () => {
     const editor = new LineEditor();
     editor.handleKey({ key: "text", text: "a👍b" });
-    expect(editor.getClusters()).toEqual(["a", "👍", "b"]);
+    expect(editor.getRowClusters(0)).toEqual(["a", "👍", "b"]);
     editor.handleKey({ key: "left" });
     editor.handleKey({ key: "backspace" });
     expect(editor.getText()).toBe("ab");
@@ -111,14 +112,14 @@ describe("LineEditor", () => {
     const editor = new LineEditor();
     editor.handleKey({ key: "text", text: "hello world foo" });
     editor.handleKey({ key: "wordLeft" });
-    expect(editor.getCursor()).toBe(12);
+    expect(editor.getCursorCol()).toBe(12);
     editor.handleKey({ key: "wordRight" });
-    expect(editor.getCursor()).toBe(15);
+    expect(editor.getCursorCol()).toBe(15);
     editor.handleKey({ key: "killWord" });
     expect(editor.getText()).toBe("hello world ");
     editor.handleKey({ key: "home" });
     editor.handleKey({ key: "wordRight" });
-    expect(editor.getCursor()).toBe(6);
+    expect(editor.getCursorCol()).toBe(6);
     editor.handleKey({ key: "killToStart" });
     expect(editor.getText()).toBe("world ");
     editor.handleKey({ key: "right" });
@@ -128,10 +129,11 @@ describe("LineEditor", () => {
     expect(editor.getText()).toBe("wor");
   });
 
-  test("sanitizes pasted newlines into spaces", () => {
+  test("keeps pasted newlines as editor rows", () => {
     const editor = new LineEditor();
     editor.handleKey({ key: "paste", text: "line one\nline two\r\nend" });
-    expect(editor.getText()).toBe("line one line two end");
+    expect(editor.getText()).toBe("line one\nline two\nend");
+    expect(editor.getLineCount()).toBe(3);
   });
 
   test("submits, resets, and records trimmed history without duplicates", () => {
@@ -158,6 +160,66 @@ describe("LineEditor", () => {
     expect(editor.getText()).toBe("two");
     editor.handleKey({ key: "down" });
     expect(editor.getText()).toBe("draf");
+  });
+
+  test("splits lines with newline and merges them with backspace and delete", () => {
+    const editor = new LineEditor();
+    editor.handleKey({ key: "text", text: "ab" });
+    editor.handleKey({ key: "left" });
+    expect(editor.handleKey({ key: "newline" })).toEqual({ type: "changed" });
+    expect(editor.getText()).toBe("a\nb");
+    expect(editor.getCursorRow()).toBe(1);
+    expect(editor.getCursorCol()).toBe(0);
+    editor.handleKey({ key: "backspace" });
+    expect(editor.getText()).toBe("ab");
+    expect(editor.getCursorRow()).toBe(0);
+    expect(editor.getCursorCol()).toBe(1);
+    editor.handleKey({ key: "end" });
+    editor.handleKey({ key: "newline" });
+    expect(editor.getText()).toBe("ab\n");
+    editor.handleKey({ key: "backspace" });
+    expect(editor.getText()).toBe("ab");
+  });
+
+  test("moves the caret across rows and falls through to history at edges", () => {
+    const editor = new LineEditor(["old"]);
+    editor.handleKey({ key: "paste", text: "one\ntwo" });
+    expect(editor.getCursorRow()).toBe(1);
+    // Down at the last row has no newer history entry, so the buffer stays.
+    editor.handleKey({ key: "down" });
+    expect(editor.getText()).toBe("one\ntwo");
+    editor.handleKey({ key: "up" });
+    expect(editor.getCursorRow()).toBe(0);
+    expect(editor.getCursorCol()).toBe(3);
+    // Up at the first row loads the previous history entry.
+    editor.handleKey({ key: "up" });
+    expect(editor.getText()).toBe("old");
+    expect(editor.getCursorRow()).toBe(0);
+    // Down past the last entry restores the multi-line draft.
+    editor.handleKey({ key: "down" });
+    expect(editor.getText()).toBe("one\ntwo");
+    expect(editor.getCursorRow()).toBe(0);
+  });
+
+  test("submits multi-line drafts and restores them from history", () => {
+    const editor = new LineEditor();
+    editor.handleKey({ key: "paste", text: "const a = 1;\nconst b = 2;" });
+    expect(editor.handleKey({ key: "enter" })).toEqual({
+      type: "submitted",
+      line: "const a = 1;\nconst b = 2;",
+    });
+    editor.handleKey({ key: "up" });
+    expect(editor.getText()).toBe("const a = 1;\nconst b = 2;");
+    expect(editor.getCursorRow()).toBe(0);
+  });
+
+  test("setText replaces the buffer for completion inserts", () => {
+    const editor = new LineEditor();
+    editor.handleKey({ key: "text", text: "/mo" });
+    expect(editor.setText("/models ")).toEqual({ type: "changed" });
+    expect(editor.getText()).toBe("/models ");
+    expect(editor.getCursorRow()).toBe(0);
+    expect(editor.getCursorCol()).toBe(8);
   });
 
   test("passes interrupt and eof through without touching the buffer", () => {

@@ -1,7 +1,7 @@
-// Raw-mode input decoding and line editing. InputDecoder turns stdin bytes
-// into KeyEvent values (escape sequences may arrive split across chunks);
-// LineEditor is a pure state machine over grapheme clusters so the renderer
-// can compute cursor cells with width.ts.
+// Raw-mode input decoding and multi-line text editing. InputDecoder turns
+// stdin bytes into KeyEvent values (escape sequences may arrive split across
+// chunks); LineEditor is a pure state machine over grapheme-cluster rows so
+// the renderer can compute cursor cells with width.ts.
 
 import { graphemes } from "./width";
 
@@ -9,6 +9,7 @@ export type KeyName =
   | "text"
   | "paste"
   | "enter"
+  | "newline"
   | "tab"
   | "backspace"
   | "delete"
@@ -114,7 +115,10 @@ export class InputDecoder {
     const head = this.#buffer.at(0);
     if (head === undefined) return undefined;
     if (head === 0x1b) return this.#decodeEscape();
-    if (head === 0x0d || head === 0x0a) return this.#consume(1, { key: "enter" });
+    // CR submits; LF maps to Ctrl+J so multi-line editors can use it as the
+    // soft newline key (the OpenCode input_newline default).
+    if (head === 0x0d) return this.#consume(1, { key: "enter" });
+    if (head === 0x0a) return this.#consume(1, { key: "newline" });
     if (head === 0x09) return this.#consume(1, { key: "tab" });
     if (head === 0x7f) return this.#consume(1, { key: "backspace" });
     if (head < 0x20) {
@@ -239,8 +243,9 @@ const CHANGED: EditorAction = { type: "changed" };
 const NONE: EditorAction = { type: "none" };
 
 export class LineEditor {
-  #clusters: string[] = [];
-  #cursor = 0;
+  #lines: string[][] = [[]];
+  #row = 0;
+  #col = 0;
   #history: string[];
   #historyIndex: number;
   #draft = "";
@@ -251,15 +256,23 @@ export class LineEditor {
   }
 
   getText(): string {
-    return this.#clusters.join("");
+    return this.#lines.map((line) => line.join("")).join("\n");
   }
 
-  getCursor(): number {
-    return this.#cursor;
+  getCursorRow(): number {
+    return this.#row;
   }
 
-  getClusters(): readonly string[] {
-    return this.#clusters;
+  getCursorCol(): number {
+    return this.#col;
+  }
+
+  getLineCount(): number {
+    return this.#lines.length;
+  }
+
+  getRowClusters(row: number): readonly string[] {
+    return this.#lines[row] ?? [];
   }
 
   addHistory(line: string): void {
@@ -271,17 +284,32 @@ export class LineEditor {
   }
 
   reset(): void {
-    this.#clusters = [];
-    this.#cursor = 0;
+    this.#lines = [[]];
+    this.#row = 0;
+    this.#col = 0;
     this.#historyIndex = this.#history.length;
     this.#draft = "";
   }
 
+  // Replaces the whole buffer (autocomplete insertion) and puts the cursor at
+  // the end of the first line.
+  setText(text: string): EditorAction {
+    const [first = "", ...rest] = text.split("\n");
+    this.#lines = [graphemes(first), ...rest.map((line) => graphemes(line))];
+    this.#row = 0;
+    this.#col = this.#lines[0]?.length ?? 0;
+    return this.#col > 0 || this.#lines.length > 1 ? CHANGED : NONE;
+  }
+
   insertText(text: string): EditorAction {
     if (text.length === 0) return NONE;
-    const clusters = graphemes(text);
-    this.#clusters.splice(this.#cursor, 0, ...clusters);
-    this.#cursor += clusters.length;
+    const parts = text.replace(/\r/g, "").split("\n");
+    for (let index = 0; index < parts.length; index += 1) {
+      if (index > 0) this.#splitLine();
+      const clusters = graphemes(parts[index] ?? "");
+      this.#currentLine().splice(this.#col, 0, ...clusters);
+      this.#col += clusters.length;
+    }
     return CHANGED;
   }
 
@@ -290,54 +318,105 @@ export class LineEditor {
     case "text":
       return this.insertText(event.text ?? "");
     case "paste":
-      return this.insertText((event.text ?? "").replace(/\r/g, "").replace(/\n+/g, " "));
+      // Multi-line pastes keep their newlines so code snippets arrive intact.
+      return this.insertText(event.text ?? "");
     case "enter":
       return this.submit();
-    case "backspace":
-      if (this.#cursor === 0) return NONE;
-      this.#clusters.splice(this.#cursor - 1, 1);
-      this.#cursor -= 1;
+    case "newline":
+      this.#splitLine();
       return CHANGED;
-    case "delete":
-      if (this.#cursor >= this.#clusters.length) return NONE;
-      this.#clusters.splice(this.#cursor, 1);
+    case "backspace": {
+      if (this.#col === 0) {
+        if (this.#row === 0) return NONE;
+        const current = this.#lines[this.#row] ?? [];
+        this.#row -= 1;
+        this.#col = this.#currentLine().length;
+        this.#currentLine().push(...current);
+        this.#lines.splice(this.#row + 1, 1);
+        return CHANGED;
+      }
+      this.#currentLine().splice(this.#col - 1, 1);
+      this.#col -= 1;
       return CHANGED;
+    }
+    case "delete": {
+      const line = this.#currentLine();
+      if (this.#col >= line.length) {
+        const next = this.#lines[this.#row + 1];
+        if (next === undefined) return NONE;
+        line.push(...next);
+        this.#lines.splice(this.#row + 1, 1);
+        return CHANGED;
+      }
+      line.splice(this.#col, 1);
+      return CHANGED;
+    }
     case "left":
-      return this.#moveCursor(this.#cursor - 1);
-    case "right":
-      return this.#moveCursor(this.#cursor + 1);
-    case "home":
-      return this.#moveCursor(0);
-    case "end":
-      return this.#moveCursor(this.#clusters.length);
-    case "wordLeft":
-      return this.#moveCursor(this.#wordLeftBoundary());
-    case "wordRight":
-      return this.#moveCursor(this.#wordRightBoundary());
+      if (this.#col > 0) return this.#moveCursor(this.#row, this.#col - 1);
+      if (this.#row === 0) return NONE;
+      return this.#moveCursor(this.#row - 1, (this.#lines[this.#row - 1] ?? []).length);
+    case "right": {
+      const line = this.#currentLine();
+      if (this.#col < line.length) return this.#moveCursor(this.#row, this.#col + 1);
+      const next = this.#lines[this.#row + 1];
+      if (next === undefined) return NONE;
+      return this.#moveCursor(this.#row + 1, 0);
+    }
     case "up":
+      // Inside the buffer the arrows move the caret across rows; only the
+      // first/last row boundary falls through to history (shell style).
+      if (this.#row > 0) return this.#moveCursor(this.#row - 1, this.#col);
       return this.#loadHistory(this.#historyIndex - 1);
     case "down":
+      if (this.#row < this.#lines.length - 1) {
+        return this.#moveCursor(this.#row + 1, this.#col);
+      }
       return this.#loadHistory(this.#historyIndex + 1);
-    case "killToStart":
-      if (this.#cursor === 0) return NONE;
-      this.#clusters.splice(0, this.#cursor);
-      this.#cursor = 0;
+    case "home":
+      return this.#moveCursor(this.#row, 0);
+    case "end":
+      return this.#moveCursor(this.#row, this.#currentLine().length);
+    case "wordLeft":
+      return this.#moveCursor(this.#row, this.#wordLeftBoundary());
+    case "wordRight":
+      return this.#moveCursor(this.#row, this.#wordRightBoundary());
+    case "killToStart": {
+      if (this.#col === 0 && this.#row === 0) return NONE;
+      if (this.#col === 0) {
+        const current = this.#lines[this.#row] ?? [];
+        this.#row -= 1;
+        this.#col = this.#currentLine().length;
+        this.#currentLine().push(...current);
+        this.#lines.splice(this.#row + 1, 1);
+        return CHANGED;
+      }
+      this.#currentLine().splice(0, this.#col);
+      this.#col = 0;
       return CHANGED;
-    case "killLine":
-      if (this.#cursor >= this.#clusters.length) return NONE;
-      this.#clusters.splice(this.#cursor);
+    }
+    case "killLine": {
+      const line = this.#currentLine();
+      if (this.#col >= line.length) {
+        const next = this.#lines[this.#row + 1];
+        if (next === undefined) return NONE;
+        line.push(...next);
+        this.#lines.splice(this.#row + 1, 1);
+        return CHANGED;
+      }
+      line.splice(this.#col);
       return CHANGED;
+    }
     case "killWord": {
       const boundary = this.#wordLeftBoundary();
-      if (boundary === this.#cursor) return NONE;
-      this.#clusters.splice(boundary, this.#cursor - boundary);
-      this.#cursor = boundary;
+      if (boundary === this.#col) return NONE;
+      this.#currentLine().splice(boundary, this.#col - boundary);
+      this.#col = boundary;
       return CHANGED;
     }
     case "interrupt":
       return { type: "interrupt" };
     case "eof":
-      return this.#clusters.length === 0 ? { type: "eof" } : NONE;
+      return this.#lines.length === 1 && (this.#lines[0] ?? []).length === 0 ? { type: "eof" } : NONE;
     case "escape":
       return { type: "escape" };
     default:
@@ -348,17 +427,32 @@ export class LineEditor {
   submit(): EditorAction {
     const line = this.getText();
     this.addHistory(line);
-    this.#clusters = [];
-    this.#cursor = 0;
+    this.#lines = [[]];
+    this.#row = 0;
+    this.#col = 0;
     this.#draft = "";
     this.#historyIndex = this.#history.length;
     return { type: "submitted", line };
   }
 
-  #moveCursor(target: number): EditorAction {
-    const clamped = Math.max(0, Math.min(this.#clusters.length, target));
-    if (clamped === this.#cursor) return NONE;
-    this.#cursor = clamped;
+  #currentLine(): string[] {
+    return this.#lines[this.#row] ?? (this.#lines[this.#row] = []);
+  }
+
+  #splitLine(): void {
+    const line = this.#currentLine();
+    const tail = line.splice(this.#col);
+    this.#lines.splice(this.#row + 1, 0, tail);
+    this.#row += 1;
+    this.#col = 0;
+  }
+
+  #moveCursor(row: number, col: number): EditorAction {
+    const clampedRow = Math.max(0, Math.min(this.#lines.length - 1, row));
+    const clampedCol = Math.max(0, Math.min((this.#lines[clampedRow] ?? []).length, col));
+    if (clampedRow === this.#row && clampedCol === this.#col) return NONE;
+    this.#row = clampedRow;
+    this.#col = clampedCol;
     return CHANGED;
   }
 
@@ -366,23 +460,27 @@ export class LineEditor {
     if (index < 0 || index > this.#history.length) return NONE;
     if (this.#historyIndex === this.#history.length) this.#draft = this.getText();
     const entry = index === this.#history.length ? this.#draft : this.#history[index] ?? "";
+    const [first = "", ...rest] = entry.split("\n");
+    this.#lines = [graphemes(first), ...rest.map((line) => graphemes(line))];
     this.#historyIndex = index;
-    this.#clusters = graphemes(entry);
-    this.#cursor = this.#clusters.length;
+    this.#row = 0;
+    this.#col = this.#lines[0]?.length ?? 0;
     return CHANGED;
   }
 
   #wordLeftBoundary(): number {
-    let index = this.#cursor;
-    while (index > 0 && this.#clusters[index - 1] === " ") index -= 1;
-    while (index > 0 && this.#clusters[index - 1] !== " ") index -= 1;
+    let index = this.#col;
+    const line = this.#currentLine();
+    while (index > 0 && line[index - 1] === " ") index -= 1;
+    while (index > 0 && line[index - 1] !== " ") index -= 1;
     return index;
   }
 
   #wordRightBoundary(): number {
-    let index = this.#cursor;
-    while (index < this.#clusters.length && this.#clusters[index] !== " ") index += 1;
-    while (index < this.#clusters.length && this.#clusters[index] === " ") index += 1;
+    let index = this.#col;
+    const line = this.#currentLine();
+    while (index < line.length && line[index] !== " ") index += 1;
+    while (index < line.length && line[index] === " ") index += 1;
     return index;
   }
 }

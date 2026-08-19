@@ -7,7 +7,7 @@ import { createModelProvider, ModelProviderRouter, providerConfig } from "./mode
 import { ModelCatalogManager } from "./model/catalog-manager";
 import { ModelCatalogStore } from "./model/catalog-store";
 import { ModelSelectionStore, applyPersistedModelSelection, createPersistingModelManager } from "./model/selection-store";
-import { runRepl, type ReplIO } from "./repl";
+import { REPL_COMMANDS, runRepl, type ReplIO } from "./repl";
 import { SessionStore } from "./session";
 import { createCommandTool, runCommand, type CommandApprover } from "./tools/command";
 import { createEditTool } from "./tools/editing";
@@ -460,6 +460,8 @@ export async function main(args = Bun.argv.slice(2)): Promise<void> {
       stdin: process.stdin,
       sink: process.stdout,
       columns: () => process.stdout.columns || 80,
+      rows: () => process.stdout.rows || 24,
+      commands: REPL_COMMANDS,
       status: {
         model: `${config.provider ?? "agnes"}/${config.model}`,
         session: sessionId ?? "memory-only",
