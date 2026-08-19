@@ -199,7 +199,12 @@ function formatTableCell(
   header: boolean,
 ): string {
   const styled = applyInline(header ? theme.style.bold(value) : value, theme);
-  const missing = Math.max(0, width - textWidth(value));
+  // Measure rendered width, not raw width: applyInline strips markdown markers
+  // (e.g. **bold**) and may add ANSI escape codes, both of which change the
+  // visible cell width. Using textWidth(value) under-pads the cell whenever a
+  // row contains inline markers, leaving rows narrower than the borders.
+  const visible = styled.replace(/\x1b\[[0-9;]*m/g, "");
+  const missing = Math.max(0, width - textWidth(visible));
   if (alignment === "right") return " ".repeat(missing) + styled;
   if (alignment === "center") {
     const left = Math.floor(missing / 2);

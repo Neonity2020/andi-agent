@@ -68,7 +68,7 @@ describe("renderMarkdown", () => {
   });
 
   test("keeps escaped pipes inside table cells", () => {
-    expect(renderMarkdown("| Key | Value |\n| --- | --- |\n| a\\|b | `x` |", 30, theme)).toContain("│ a|b │ x   │");
+    expect(renderMarkdown("| Key | Value |\n| --- | --- |\n| a\\|b | `x` |", 30, theme)).toContain("│ a|b │ x     │");
   });
 
   test("applies inline bold and code styling per line", () => {
@@ -94,5 +94,15 @@ describe("renderMarkdown", () => {
 
   test("rejects widths too small to render", () => {
     expect(() => renderMarkdown("x", 2, theme)).toThrow("at least 4");
+  });
+
+  test("pads rows with inline markers to match border width", () => {
+    const output = renderMarkdown(
+      "| H1 | H2 |\n| --- | --- |\n| a | **b** |",
+      30,
+      createTheme(true),
+    );
+    const widths = output.map((line) => Bun.stringWidth(line.replace(/\x1b\[[0-9;]*m/g, "")));
+    expect(new Set(widths).size).toBe(1);
   });
 });
