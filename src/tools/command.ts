@@ -65,10 +65,10 @@ export async function runCommand(
 
   const command = [program, ...args];
   if (!isCommandAllowed(program, args)) {
-    if (!approver) throw new Error(`Command requires approval: ${JSON.stringify(command)}`);
+    if (!approver) throw new Error(`命令需要批准: ${JSON.stringify(command)}`);
     const approved = await approver(command, signal);
     throwIfAborted(signal);
-    if (!approved) throw new Error(`Command was rejected by the user: ${JSON.stringify(command)}`);
+    if (!approved) throw new Error(`命令被用户拒绝: ${JSON.stringify(command)}`);
   }
   throwIfAborted(signal);
 

@@ -202,7 +202,7 @@ function createTerminalApprover(
   return async (command, signal) => {
     if (sharedTerminal) {
       const answer = await sharedTerminal.question(
-        `\nApprove command ${JSON.stringify(command)}? [y/N] `,
+        `\n批准命令 ${JSON.stringify(command)}? [y/N] `,
         true,
         signal,
       );
@@ -212,7 +212,7 @@ function createTerminalApprover(
     const terminal = createInterface({ input: process.stdin, output: process.stderr });
     try {
       const answer = await new Promise<string>((resolve) => {
-        terminal.question(`\nApprove command ${JSON.stringify(command)}? [y/N] `, resolve);
+        terminal.question(`\n批准命令 ${JSON.stringify(command)}? [y/N] `, resolve);
       });
       return answer.trim().toLowerCase() === "y" || answer.trim().toLowerCase() === "yes";
     } finally {

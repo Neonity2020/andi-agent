@@ -320,7 +320,7 @@ export class Tui {
     if (this.#closed) return Promise.resolve(false);
     const label = command.join(" ");
     this.#seal([
-      this.#theme.warnText(`approval required ${this.#theme.symbols.arrow} ${label}`),
+      this.#theme.warnText(`需要批准 ${this.#theme.symbols.arrow} ${label}`),
       "",
     ]);
     return new Promise((resolve) => {
@@ -362,8 +362,7 @@ export class Tui {
     }
 
     if (this.#mode === "approval" && this.#approval) {
-      // y approves; any other key (including enter) denies, matching the
-      // [y/N] default of the plain approver.
+      // y 批准；任意其他键（包括回车）拒绝，匹配纯文本审批器的 [y/N] 默认行为。
       if (event.key === "interrupt") this.#interruptHandler?.();
       const approved = event.key === "text" && (event.text === "y" || event.text === "Y");
       this.#approval.resolve(approved);
@@ -595,7 +594,7 @@ export class Tui {
     }
 
     if (this.#mode === "approval") {
-      lines.push(this.#theme.warnText("approve? [y/N]"));
+      lines.push(this.#theme.warnText("批准？[y/N]"));
     } else if (this.#mode === "select" && this.#selection) {
       lines.push(...this.#selectionLines(this.#selection, width));
     } else if (this.#mode === "running") {

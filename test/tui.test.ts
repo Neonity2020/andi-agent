@@ -336,8 +336,8 @@ describe("Tui", () => {
     const { tui, stdin, output } = createHarness();
     tui.start();
     const approved = tui.approve(["bun", "install"]);
-    expect(output()).toContain("approval required → bun install");
-    expect(output()).toContain("approve? [y/N]");
+    expect(output()).toContain("需要批准 → bun install");
+    expect(output()).toContain("批准？[y/N]");
     stdin.send("y");
     await expect(approved).resolves.toBe(true);
 

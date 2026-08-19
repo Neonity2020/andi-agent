@@ -28,7 +28,7 @@ describe("runCommand", () => {
   });
 
   test("rejects a command before spawning it", () => {
-    expect(runCommand(process.cwd(), "git", ["reset"], 5_000)).rejects.toThrow("requires approval");
+    expect(runCommand(process.cwd(), "git", ["reset"], 5_000)).rejects.toThrow("需要批准");
   });
 
   test("runs a non-policy command only after approval", async () => {
@@ -46,7 +46,7 @@ describe("runCommand", () => {
   test("does not run a rejected command", () => {
     expect(
       runCommand(process.cwd(), "node", ["--version"], 5_000, 64 * 1024, async () => false),
-    ).rejects.toThrow("rejected by the user");
+    ).rejects.toThrow("被用户拒绝");
   });
 
   test("kills a subprocess when cancelled and distinguishes it from timeout", async () => {
