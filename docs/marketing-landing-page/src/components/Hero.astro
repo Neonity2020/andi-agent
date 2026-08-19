@@ -1,0 +1,162 @@
+---
+---
+
+<section class="relative overflow-hidden pt-32 pb-20 sm:pt-40 sm:pb-28">
+  <!-- Background grid + glow -->
+  <div
+    aria-hidden="true"
+    class="absolute inset-0 bg-grid dark:bg-grid-dark [mask-image:radial-gradient(60%_60%_at_50%_30%,black,transparent)]"
+  >
+  </div>
+  <div aria-hidden="true" class="absolute inset-0 hero-glow"></div>
+
+  <div class="container-wide relative">
+    <div class="mx-auto max-w-3xl text-center">
+      <div
+        class="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/60 px-3 py-1 text-xs font-medium text-slate-600 backdrop-blur dark:border-slate-800 dark:bg-slate-900/60 dark:text-slate-300"
+      >
+        <span class="relative flex h-2 w-2">
+          <span
+            class="absolute inline-flex h-full w-full animate-ping rounded-full bg-brand-400 opacity-75"
+          ></span>
+          <span class="relative inline-flex h-2 w-2 rounded-full bg-brand-500"
+          ></span>
+        </span>
+        v4.0 已发布 · 全新 AI 助手上线
+      </div>
+
+      <h1
+        class="mt-6 text-4xl font-bold leading-[1.1] tracking-tight text-slate-900 sm:text-6xl dark:text-white"
+      >
+        更快地<br class="sm:hidden" />
+        <span
+          class="bg-gradient-to-r from-brand-700 via-brand-500 to-brand-700 bg-clip-text text-transparent"
+          >交付出色的产品</span
+        >
+      </h1>
+
+      <p
+        class="mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-slate-600 sm:text-xl dark:text-slate-300"
+      >
+        Lumen 是一个面向高产能团队的工作流平台。在同一个空间内规划、协作、构建并发布 —— 不再被零碎的工具拖慢节奏。
+      </p>
+
+      <div class="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row">
+        <a
+          href="#cta"
+          class="inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-6 text-base font-medium text-white shadow-sm transition hover:bg-slate-700 sm:w-auto dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200"
+        >
+          免费开始
+          <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M5 12h14M13 5l7 7-7 7" />
+          </svg>
+        </a>
+        <a
+          href="#showcase"
+          class="inline-flex h-12 w-full items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-6 text-base font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 sm:w-auto dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-slate-700 dark:hover:bg-slate-800"
+        >
+          <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="5 3 19 12 5 21 5 3" />
+          </svg>
+          观看演示
+        </a>
+      </div>
+
+      <p
+        class="mt-4 text-xs text-slate-500 dark:text-slate-400"
+      >
+        免费试用 14 天 · 无需信用卡
+      </p>
+    </div>
+
+    <!-- Hero product preview -->
+    <div class="relative mx-auto mt-16 max-w-5xl">
+      <div
+        class="absolute -inset-x-12 -inset-y-8 -z-10 rounded-[2.5rem] bg-brand-700/10 blur-3xl"
+      >
+      </div>
+
+      <div
+        class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl shadow-slate-900/10 dark:border-slate-800 dark:bg-slate-900 dark:shadow-black/40"
+      >
+        <!-- Window chrome -->
+        <div class="flex items-center gap-2 border-b border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-950">
+          <span class="h-2.5 w-2.5 rounded-full bg-red-400"></span>
+          <span class="h-2.5 w-2.5 rounded-full bg-yellow-400"></span>
+          <span class="h-2.5 w-2.5 rounded-full bg-green-400"></span>
+          <span
+            class="ml-3 text-xs text-slate-500 dark:text-slate-400"
+            >lumen.app / dashboard</span
+          >
+        </div>
+
+        <!-- Mock dashboard -->
+        <div class="grid grid-cols-12 gap-4 p-6">
+          <!-- Sidebar -->
+          <aside class="col-span-3 hidden rounded-lg border border-slate-200 bg-slate-50/60 p-3 md:block dark:border-slate-800 dark:bg-slate-950/60">
+            <div class="space-y-1.5">
+              {
+                ["概览", "项目", "任务", "团队", "报表"].map((label, i) => (
+                  <div
+                    class:list={[
+                      "flex items-center gap-2 rounded-md px-2.5 py-1.5 text-xs",
+                      i === 0
+                        ? "bg-white font-medium text-slate-900 shadow-sm dark:bg-slate-800 dark:text-white"
+                        : "text-slate-500 dark:text-slate-400",
+                    ]}
+                  >
+                    <span class="h-1.5 w-1.5 rounded-full bg-slate-300 dark:bg-slate-600" />
+                    {label}
+                  </div>
+                ))
+              }
+            </div>
+          </aside>
+
+          <!-- Main area -->
+          <div class="col-span-12 md:col-span-9 space-y-4">
+            <div class="flex items-center justify-between">
+              <div>
+                <div class="h-2.5 w-24 rounded bg-slate-200 dark:bg-slate-800"></div>
+                <div class="mt-2 h-4 w-40 rounded bg-slate-300 dark:bg-slate-700"></div>
+              </div>
+              <div class="h-8 w-20 rounded-md bg-brand-700"></div>
+            </div>
+
+            <div class="grid grid-cols-3 gap-3">
+              {
+                Array.from({ length: 3 }).map(() => (
+                  <div class="rounded-lg border border-slate-200 bg-slate-50/60 p-3 dark:border-slate-800 dark:bg-slate-950/60">
+                    <div class="h-2 w-12 rounded bg-slate-200 dark:bg-slate-800" />
+                    <div class="mt-2 h-5 w-16 rounded bg-slate-300 dark:bg-slate-700" />
+                    <div class="mt-2 h-1.5 w-full rounded-full bg-slate-200 dark:bg-slate-800">
+                      <div class="h-1.5 w-2/3 rounded-full bg-brand-600" />
+                    </div>
+                  </div>
+                ))
+              }
+            </div>
+
+            <!-- Chart mock -->
+            <div
+              class="rounded-lg border border-slate-200 bg-slate-50/60 p-4 dark:border-slate-800 dark:bg-slate-950/60"
+            >
+              <div class="flex items-end justify-between gap-1.5 h-28">
+                {
+                  [40, 65, 50, 80, 60, 90, 75, 95, 70, 85, 60, 100].map(
+                    (h) => (
+                      <div
+                        class="w-full rounded-t bg-gradient-to-t from-brand-700/40 to-brand-500"
+                        style={`height: ${h}%`}
+                      />
+                    )
+                  )
+                }
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>

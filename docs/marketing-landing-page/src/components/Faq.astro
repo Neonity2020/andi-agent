@@ -1,0 +1,71 @@
+---
+const faqs = [
+  {
+    q: "我可以免费使用 Lumen 吗？",
+    a: "可以。Starter 计划对个人开发者和小型项目永久免费，包含核心功能。当你的项目规模扩大时再考虑升级。",
+  },
+  {
+    q: "支持哪些开发语言与框架？",
+    a: "Lumen 原生支持 TypeScript、JavaScript、Python 和 Go，覆盖主流的前端框架（React、Vue、Svelte）与后端框架。",
+  },
+  {
+    q: "数据存储在哪里？",
+    a: "所有数据存储在客户选择的区域。我们提供全球 12 个区域，并支持 BYOC（自带云）以满足最严格的合规要求。",
+  },
+  {
+    q: "如何取消订阅？",
+    a: "随时可以在控制台一键取消，按月计费，无任何长期承诺。已支付的周期内仍可继续使用。",
+  },
+  {
+    q: "提供企业试用吗？",
+    a: "提供。我们为企业客户提供 30 天评估期，包含定制 POC 与专属客户经理。请通过 contact@lumen.example 联系我们。",
+  },
+  {
+    q: "有 SLA 保障吗？",
+    a: "Enterprise 计划包含 99.99% SLA，未达成时按月费比例赔付。Pro 计划保持 99.9% 正常运行时间。",
+  },
+];
+---
+
+<section id="faq" class="py-24 sm:py-32">
+  <div class="container-narrow">
+    <div class="mx-auto max-w-2xl text-center">
+      <p
+        class="text-sm font-semibold tracking-wider text-brand-600 uppercase dark:text-brand-400"
+      >
+        常见问题
+      </p>
+      <h2
+        class="mt-3 text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl dark:text-white"
+      >
+        你可能想知道的
+      </h2>
+    </div>
+
+    <div class="mt-12 space-y-3">
+      {
+        faqs.map((item) => (
+          <details class="group rounded-xl border border-slate-200 bg-white px-5 py-4 transition open:shadow-sm dark:border-slate-800 dark:bg-slate-900">
+            <summary class="flex cursor-pointer list-none items-center justify-between gap-4 text-base font-medium text-slate-900 dark:text-white">
+              <span>{item.q}</span>
+              <svg
+                class="h-5 w-5 flex-shrink-0 text-slate-400 transition group-open:rotate-180"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </summary>
+            <p class="mt-3 text-sm leading-relaxed text-slate-600 dark:text-slate-400">
+              {item.a}
+            </p>
+          </details>
+        ))
+      }
+    </div>
+  </div>
+</section>

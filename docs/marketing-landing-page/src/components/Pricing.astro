@@ -1,0 +1,137 @@
+---
+const tiers = [
+  {
+    name: "Starter",
+    description: "适合个人开发者和初创项目",
+    price: "$0",
+    period: "永久免费",
+    cta: "免费开始",
+    href: "#cta",
+    highlight: false,
+    features: [
+      "1 个项目",
+      "社区支持",
+      "基础分析",
+      "每月 10k 请求",
+    ],
+  },
+  {
+    name: "Pro",
+    description: "适合成长中的产品团队",
+    price: "$29",
+    period: "/ 用户 / 月",
+    cta: "开始 14 天试用",
+    href: "#cta",
+    highlight: true,
+    features: [
+      "无限项目",
+      "优先邮件支持",
+      "高级分析 + 导出",
+      "每月 100k 请求",
+      "团队协作（10 席）",
+      "AI 助手额度",
+    ],
+  },
+  {
+    name: "Enterprise",
+    description: "为大型组织定制",
+    price: "定制",
+    period: "联系我们获取报价",
+    cta: "联系销售",
+    href: "#",
+    highlight: false,
+    features: [
+      "所有 Pro 功能",
+      "专属客户经理",
+      "SSO + SCIM",
+      "SOC 2 / HIPAA 合规",
+      "99.99% SLA",
+      "自定义集成",
+    ],
+  },
+];
+---
+
+<section id="pricing" class="py-24 sm:py-32">
+  <div class="container-wide">
+    <div class="mx-auto max-w-2xl text-center">
+      <p
+        class="text-sm font-semibold tracking-wider text-brand-600 uppercase dark:text-brand-400"
+      >
+        价格
+      </p>
+      <h2
+        class="mt-3 text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl dark:text-white"
+      >
+        简单透明，按团队规模付费
+      </h2>
+      <p class="mt-4 text-lg text-slate-600 dark:text-slate-300">
+        所有计划都包含核心功能。升级只是解锁更大规模与更强支持。
+      </p>
+    </div>
+
+    <div class="mt-16 grid gap-6 lg:grid-cols-3">
+      {
+        tiers.map((t) => (
+          <div
+            class:list={[
+              "relative rounded-2xl border p-8 transition",
+              t.highlight
+                ? "border-brand-500 bg-gradient-to-b from-brand-50 via-white to-white shadow-xl shadow-brand-700/10 dark:from-brand-500/10 dark:via-slate-900 dark:to-slate-900"
+                : "border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900",
+            ]}
+          >
+            {t.highlight && (
+              <span class="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-brand-700 px-3 py-1 text-xs font-medium text-white shadow-sm">
+                最受欢迎
+              </span>
+            )}
+            <h3 class="text-lg font-semibold text-slate-900 dark:text-white">
+              {t.name}
+            </h3>
+            <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">
+              {t.description}
+            </p>
+            <div class="mt-6 flex items-baseline gap-1">
+              <span class="text-4xl font-bold tracking-tight text-slate-900 dark:text-white">
+                {t.price}
+              </span>
+              <span class="text-sm text-slate-500 dark:text-slate-400">
+                {t.period}
+              </span>
+            </div>
+            <a
+              href={t.href}
+              class:list={[
+                "mt-6 inline-flex h-10 w-full items-center justify-center rounded-lg text-sm font-medium transition",
+                t.highlight
+                  ? "bg-slate-900 text-white hover:bg-slate-700 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200"
+                  : "border border-slate-200 bg-white text-slate-900 hover:border-slate-300 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-white dark:hover:border-slate-700 dark:hover:bg-slate-800",
+              ]}
+            >
+              {t.cta}
+            </a>
+            <ul class="mt-6 space-y-3 text-sm">
+              {t.features.map((f) => (
+                <li class="flex items-start gap-3">
+                  <svg
+                    class="mt-0.5 h-4 w-4 flex-shrink-0 text-brand-500"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="3"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                  <span class="text-slate-700 dark:text-slate-300">{f}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))
+      }
+    </div>
+  </div>
+</section>

@@ -1,0 +1,96 @@
+---
+const features = [
+  {
+    title: "极速性能",
+    description: "全球边缘部署，首屏 < 200ms。无需调参就能获得顶级响应速度。",
+    icon: "bolt",
+  },
+  {
+    title: "原生协作",
+    description: "实时光标、评论、版本历史。让团队节奏保持一致，减少会议。",
+    icon: "users",
+  },
+  {
+    title: "AI 助手",
+    description: "基于上下文自动补全、生成与重构。让模型处理重复，把判断留给你。",
+    icon: "sparkles",
+  },
+  {
+    title: "企业级安全",
+    description: "SOC 2 Type II、SSO、SCIM、行级权限。满足最严格的合规要求。",
+    icon: "shield",
+  },
+  {
+    title: "可观测性",
+    description: "从原始事件到业务指标的全链路追踪，快速定位问题与机会。",
+    icon: "chart",
+  },
+  {
+    title: "开放生态",
+    description: "完善的 API、Webhook 与插件市场。把 Lumen 嵌入你已有的工作流。",
+    icon: "puzzle",
+  },
+];
+
+const iconPath = {
+  bolt: "M13 2L3 14h7l-1 8 10-12h-7l1-8z",
+  users:
+    "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2 M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8 M22 21v-2a4 4 0 0 0-3-3.87 M16 3.13a4 4 0 0 1 0 7.75",
+  sparkles: "M12 3v3 M12 18v3 M3 12h3 M18 12h3 M5.6 5.6l2.1 2.1 M16.3 16.3l2.1 2.1 M5.6 18.4l2.1-2.1 M16.3 7.7l2.1-2.1",
+  shield: "M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z",
+  chart:
+    "M3 3v18h18 M7 14l4-4 4 4 5-5",
+  puzzle:
+    "M19 11h-1V8a2 2 0 0 0-2-2h-3V5a2 2 0 1 0-4 0v1H6a2 2 0 0 0-2 2v3H3a2 2 0 1 0 0 4h1v3a2 2 0 0 0 2 2h3v-1a2 2 0 1 1 4 0v1h3a2 2 0 0 0 2-2v-3h1a2 2 0 1 0 0-4z",
+};
+---
+
+<section id="features" class="py-24 sm:py-32">
+  <div class="container-wide">
+    <div class="mx-auto max-w-2xl text-center">
+      <p
+        class="text-sm font-semibold tracking-wider text-brand-600 uppercase dark:text-brand-400"
+      >
+        功能
+      </p>
+      <h2
+        class="mt-3 text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl dark:text-white"
+      >
+        为团队每一阶段都精心设计
+      </h2>
+      <p class="mt-4 text-lg text-slate-600 dark:text-slate-300">
+        从构思到发布，Lumen 提供你所需的一切工具，而不只是其中一部分。
+      </p>
+    </div>
+
+    <div class="mt-16 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+      {
+        features.map((f) => (
+          <div class="group relative rounded-2xl border border-slate-200 bg-white p-6 transition hover:border-slate-300 hover:shadow-lg hover:shadow-slate-900/5 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-slate-700 dark:hover:shadow-black/30">
+            <div
+              class="grid h-11 w-11 place-items-center rounded-xl bg-ink text-white shadow-sm"
+            >
+              <svg
+                class="h-5 w-5"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <path d={iconPath[f.icon as keyof typeof iconPath]} />
+              </svg>
+            </div>
+            <h3 class="mt-5 text-lg font-semibold text-slate-900 dark:text-white">
+              {f.title}
+            </h3>
+            <p class="mt-2 text-sm leading-relaxed text-slate-600 dark:text-slate-400">
+              {f.description}
+            </p>
+          </div>
+        ))
+      }
+    </div>
+  </div>
+</section>

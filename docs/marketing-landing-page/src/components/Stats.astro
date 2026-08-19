@@ -1,0 +1,29 @@
+---
+const stats = [
+  { value: "12K+", label: "活跃团队" },
+  { value: "99.99%", label: "正常运行时间" },
+  { value: "< 200ms", label: "全球延迟" },
+  { value: "4.9/5", label: "用户评分" },
+];
+---
+
+<section class="py-16">
+  <div class="container-wide">
+    <div
+      class="overflow-hidden rounded-3xl bg-ink px-8 py-12 sm:px-12 sm:py-16"
+    >
+      <dl class="grid grid-cols-2 gap-x-8 gap-y-10 sm:grid-cols-4">
+        {
+          stats.map((s) => (
+            <div class="text-center">
+              <dt class="text-sm font-medium text-slate-400">{s.label}</dt>
+              <dd class="mt-2 text-4xl font-bold tracking-tight text-white sm:text-5xl">
+                {s.value}
+              </dd>
+            </div>
+          ))
+        }
+      </dl>
+    </div>
+  </div>
+</section>

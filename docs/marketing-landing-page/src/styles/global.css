@@ -1,0 +1,125 @@
+@import "tailwindcss";
+
+/* Tailwind v4: register `.dark` class as the dark-mode trigger
+   (default v4 uses prefers-color-scheme, but we want manual toggle) */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ---------- Design tokens (Tailwind v4 CSS-first config) ----------
+   Editorial palette: ink (near-black) + warm cream paper + deep forest.
+   Brand & accent slots are kept so existing `bg-brand-*` / `bg-accent-*`
+   utilities auto-reroute to the new palette.
+--------------------------------------------------------------------- */
+@theme {
+  --font-sans:
+    "Inter", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+
+  /* Brand = Forest (deep emerald) */
+  --color-brand-50:  #ecf6f1;
+  --color-brand-100: #d4ebde;
+  --color-brand-200: #a9d6bc;
+  --color-brand-300: #6fbc91;
+  --color-brand-400: #3a9d6a;
+  --color-brand-500: #1f7d52;   /* primary accent */
+  --color-brand-600: #166441;
+  --color-brand-700: #114e34;
+  --color-brand-800: #0c3a27;
+  --color-brand-900: #08271b;
+
+  /* Accent = muted ochre/khaki (used sparingly for variety) */
+  --color-accent-400: #c9a96b;
+  --color-accent-500: #a88548;
+  --color-accent-600: #876935;
+
+  /* Editorial surfaces */
+  --color-paper:       #f7f5ef;   /* warm cream — body bg in light */
+  --color-paper-deep:  #efeae0;   /* slightly darker cream — alt surface */
+  --color-rule:        #e6e3da;   /* warm hairline border */
+  --color-ink:         #0a0a0a;   /* near-black primary text */
+  --color-ink-soft:    #1f1f1f;
+  --color-ink-mute:    #5b5b5b;
+
+  /* Dark mode: warm ink, not slate */
+  --color-paper-dark:      #0f100e;
+  --color-paper-deep-dark: #161814;
+  --color-rule-dark:       #26241f;
+
+  /* Smooth radii */
+  --radius-xl: 1rem;
+  --radius-2xl: 1.5rem;
+  --radius-3xl: 2rem;
+
+  /* Container max width */
+  --container-7xl: 80rem;
+}
+
+/* ---------- Base layer tweaks ---------- */
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    background-color: var(--color-paper);
+    color: var(--color-ink);
+  }
+
+  /* Dark mode via class strategy (toggled by inline script in head) */
+  html.dark body {
+    background-color: var(--color-paper-dark);
+    color: #e8e6df;
+  }
+
+  ::selection {
+    background-color: var(--color-brand-500);
+    color: white;
+  }
+}
+
+/* ---------- Component utilities ---------- */
+@utility container-narrow {
+  margin-inline: auto;
+  max-width: 72rem;
+  padding-inline: 1.25rem;
+}
+
+@utility container-wide {
+  margin-inline: auto;
+  max-width: 80rem;
+  padding-inline: 1.25rem;
+}
+
+@media (min-width: 768px) {
+  .container-narrow,
+  .container-wide {
+    padding-inline: 2rem;
+  }
+}
+
+/* Faint warm grid — editorial rule, not neon grid */
+@utility bg-grid {
+  background-image:
+    linear-gradient(to right, rgb(10 10 10 / 0.045) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(10 10 10 / 0.045) 1px, transparent 1px);
+  background-size: 48px 48px;
+}
+
+@utility bg-grid-dark {
+  background-image:
+    linear-gradient(to right, rgb(232 230 223 / 0.04) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(232 230 223 / 0.04) 1px, transparent 1px);
+  background-size: 48px 48px;
+}
+
+/* Very subtle hero glow — warm/sepia hint instead of indigo */
+@utility hero-glow {
+  background:
+    radial-gradient(
+      55% 55% at 50% 0%,
+      rgb(31 125 82 / 0.10) 0%,
+      transparent 65%
+    );
+}
