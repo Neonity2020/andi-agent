@@ -6,7 +6,7 @@
 - 分支：`codex/minimax-provider-fixes`
 - 本轮已包含 MiniMax、多 Provider/模型切换、动态模型身份、MiniMax think 折叠、天气工具、SKILL 机制和 TUI Markdown 表格渲染。
 - 本次 handoff 更新准备随当前功能一起提交并推送。
-- 最近完整验证：`bun test` 234 pass / 0 fail；`bun run typecheck` 与 `git diff --check` 通过。
+- 最近完整验证：`bun test` 235 pass / 0 fail；`bun run typecheck` 与 `git diff --check` 通过。
 
 ## 已完成但未提交的功能
 
@@ -39,6 +39,7 @@
 - plain REPL 降级为编号或完整 ID 输入。
 - 参考源码克隆在 `/tmp/opencode-reference`；主要参考 `packages/tui/src/component/dialog-model.tsx` 和 `packages/tui/src/ui/dialog-select.tsx`。
 - 曾修复 picker 方法丢失 `this` 的真实 Bug；`runRepl` 必须使用 `picker.call(options.io, ...)`，已有回归测试。
+- TUI 光标定位曾因"帧未变化即跳过重绘"短路而失效：左右方向键只移动光标、不改输入文本，被当作无变化直接 return，可见光标不动。现在 `#paint()` 在短路判断里纳入光标目标列，纯光标移动也会重新定位。
 
 ### 持久化多 Provider 模型目录
 
@@ -106,6 +107,7 @@
 - `renderMarkdown()` 现在识别标准 Markdown 表格，渲染 Unicode 边框、加粗表头以及左/中/右对齐。
 - 表格列按终端 cell 宽度计算，支持 CJK、转义管道符和长单元格换行，不会超过 TUI 可用宽度。
 - 表格渲染覆盖最终 TUI 回复输出，不改变流式文本、代码块和普通 Markdown 行为。
+- 针对中英文混排和终端宽度限制导致的表格换行错位，`DEFAULT_SYSTEM_PROMPT` 增加了严格的表格输出规则：必须带标准 `|---|` 分隔行（避免漏写退化为普通文本）、优先 3-4 列（上限 5 列）、日期/温度/数值采用超紧凑格式（如 `08-19`、`23~31°C`）、多字段场景转两列键值表或列表。实测紧凑表格在 60/80 列下均可单行完整对齐且零折行。
 
 ## 关键文件
 
