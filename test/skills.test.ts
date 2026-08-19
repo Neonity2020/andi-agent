@@ -103,4 +103,77 @@ Argument: $ARGUMENTS
       await rm(root, { recursive: true, force: true });
     }
   });
+
+  test("does not run dynamic context commands for auto-matched skills", async () => {
+    const root = await mkdtemp(join(tmpdir(), "andi-skills-auto-"));
+    try {
+      await createSkill(
+        root,
+        ".agents",
+        "changes",
+        "---\nname: changes\ndescription: Summarize current changes\n---\nCurrent diff:\n!`git diff --stat`",
+      );
+      const calls: string[] = [];
+      const manager = await SkillManager.load(root, {
+        includeUserSkills: false,
+        executeCommand: async (command) => {
+          calls.push(command);
+          return "changed files";
+        },
+      });
+
+      const context = await manager.contextForTask("Please summarize the current changes");
+
+      expect(calls).toEqual([]);
+      expect(context).toContain("[dynamic context not run for auto-matched skill; invoke /skill changes to expand]");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("keeps documentation examples of dynamic context syntax from executing", async () => {
+    const root = await mkdtemp(join(tmpdir(), "andi-skills-docs-"));
+    try {
+      await createSkill(
+        root,
+        ".agents",
+        "authoring",
+        "---\nname: authoring\ndescription: Author skills with dynamic context examples\n---\nReal usage:\n!`echo real`\n\nInline docs: ``!`command` `` syntax.\n\n```text\n!`echo fenced`\n```",
+      );
+      const calls: string[] = [];
+      const manager = await SkillManager.load(root, {
+        includeUserSkills: false,
+        executeCommand: async (command) => {
+          calls.push(command);
+          return `output of ${command}`;
+        },
+      });
+
+      const prompt = (await manager.parseInvocation("/authoring"))?.prompt ?? "";
+
+      expect(calls).toEqual(["echo real"]);
+      expect(prompt).toContain("output of echo real");
+      expect(prompt).toContain("!`command`");
+      expect(prompt).toContain("!`echo fenced`");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("requires whole-word matches so greetings do not hit unrelated descriptions", async () => {
+    const root = await mkdtemp(join(tmpdir(), "andi-skills-greeting-"));
+    try {
+      await createSkill(
+        root,
+        ".agents",
+        "shadcn-like",
+        "---\nname: shadcn-like\ndescription: Manages components, adding, searching, and styling UI\n---\nbody",
+      );
+      const manager = await SkillManager.load(root, { includeUserSkills: false });
+
+      expect(await manager.contextForTask("hi，你在使用哪款模型？")).toBe("");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
 });

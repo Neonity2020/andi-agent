@@ -160,14 +160,14 @@ export class SkillManager {
       .filter((match) => match.score > 0)
       .sort((a, b) => b.score - a.score || a.skill.name.localeCompare(b.skill.name))
       .slice(0, MAX_AUTO_SKILLS);
-    return (await Promise.all(matches.map(({ skill }) => this.#render(skill, "")))).join("\n\n");
+    return (await Promise.all(matches.map(({ skill }) => this.#render(skill, "", false)))).join("\n\n");
   }
 
   async invoke(name: string, argumentsText = ""): Promise<SkillInvocation> {
     const skill = this.find(name);
     if (!skill) throw new Error(`Skill '${name}' was not found`);
     if (!skill.userInvocable) throw new Error(`Skill '${skill.name}' is not user-invocable`);
-    return { skill, prompt: await this.#render(skill, argumentsText) };
+    return { skill, prompt: await this.#render(skill, argumentsText, true) };
   }
 
   /** Accepts /skill name args and Claude-style /name args. */
@@ -182,8 +182,8 @@ export class SkillManager {
     return this.invoke(skill.name, parts[2] ?? "");
   }
 
-  async #render(skill: LoadedSkill, argumentsText: string): Promise<string> {
-    return renderSkill(skill, argumentsText, this.#executeCommand, this.#workingDirectory);
+  async #render(skill: LoadedSkill, argumentsText: string, allowDynamicContext: boolean): Promise<string> {
+    return renderSkill(skill, argumentsText, this.#executeCommand, this.#workingDirectory, allowDynamicContext);
   }
 }
 
@@ -328,19 +328,18 @@ async function renderSkill(
   argumentsText: string,
   executeCommand?: (command: string, cwd: string) => Promise<string>,
   workingDirectory = skill.directory,
+  allowDynamicContext = true,
 ): Promise<string> {
   let body = skill.body
     .replaceAll("$ARGUMENTS", argumentsText)
     .replaceAll("${CLAUDE_SKILL_DIR}", skill.directory);
-  const dynamicCommands = [...body.matchAll(/!`([^`]+)`/g)];
-  if (dynamicCommands.length > 0) {
-    for (const match of dynamicCommands) {
-      const command = match[1]!.trim();
-      const replacement = executeCommand
-        ? await executeCommand(command, workingDirectory)
-        : `[dynamic context unavailable: ${command}]`;
-      body = body.replace(match[0], replacement);
-    }
+  for (const match of executableDynamicCommands(body).reverse()) {
+    const replacement = allowDynamicContext
+      ? (executeCommand
+        ? await executeCommand(match.command, workingDirectory)
+        : `[dynamic context unavailable: ${match.command}]`)
+      : `[dynamic context not run for auto-matched skill; invoke /skill ${skill.name} to expand]`;
+    body = body.slice(0, match.start) + replacement + body.slice(match.end);
   }
   const tools = skill.frontmatter.allowedTools.length > 0
     ? `\nAllowed tools requested by skill: ${skill.frontmatter.allowedTools.join(", ")}`
@@ -353,16 +352,50 @@ async function renderSkill(
   ].join("\n\n").slice(0, MAX_SKILL_BODY_CHARS);
 }
 
+interface DynamicCommandMatch {
+  command: string;
+  start: number;
+  end: number;
+}
+
+/** Documentation shows the !`command` syntax inside code spans and fences; only real usages execute. */
+function executableDynamicCommands(body: string): DynamicCommandMatch[] {
+  const excluded: Array<[number, number]> = [];
+  const fences = [...body.matchAll(/^[ \t]*```[^\n]*$/gm)];
+  for (let index = 0; index + 1 < fences.length; index += 2) {
+    excluded.push([fences[index]!.index!, fences[index + 1]!.index! + fences[index + 1]![0].length]);
+  }
+  if (fences.length % 2 === 1) excluded.push([fences.at(-1)!.index!, body.length]);
+  return [...body.matchAll(/!`([^`\n]+)`/g)]
+    .filter((match) => {
+      const index = match.index!;
+      if (body[index - 1] === "`") return false;
+      return !excluded.some(([start, end]) => index >= start && index < end);
+    })
+    .map((match) => ({
+      command: match[1]!.trim(),
+      start: match.index!,
+      end: match.index! + match[0].length,
+    }));
+}
+
 function scoreSkill(skill: LoadedSkill, terms: readonly string[], task: string): number {
   const name = skill.name.toLowerCase();
   let score = task.includes(name) ? 10 : 0;
   for (const term of terms) {
     if (name === term) score += 8;
-    else if (name.includes(term)) score += 4;
-    if (skill.description.toLowerCase().includes(term)) score += 2;
-    if (skill.whenToUse?.toLowerCase().includes(term)) score += 3;
+    else if (termIn(name, term)) score += 4;
+    if (termIn(skill.description.toLowerCase(), term)) score += 2;
+    if (skill.whenToUse && termIn(skill.whenToUse.toLowerCase(), term)) score += 3;
   }
   return score;
+}
+
+/** Short ASCII terms must match whole words so "hi" cannot hit "searching" or "third-party". */
+function termIn(haystack: string, term: string): boolean {
+  if (/[\u4e00-\u9fff]/.test(term)) return haystack.includes(term);
+  const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(?:^|[^a-z0-9_-])${escaped}(?:$|[^a-z0-9_-])`).test(haystack);
 }
 
 function tokenize(value: string): string[] {
