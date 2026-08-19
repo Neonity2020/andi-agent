@@ -6,6 +6,7 @@ import { loadConfig, type AgentConfig } from "./config";
 import { createModelProvider, ModelProviderRouter, providerConfig } from "./model/providers";
 import { ModelCatalogManager } from "./model/catalog-manager";
 import { ModelCatalogStore } from "./model/catalog-store";
+import { ModelSelectionStore, applyPersistedModelSelection, createPersistingModelManager } from "./model/selection-store";
 import { runRepl, type ReplIO } from "./repl";
 import { SessionStore } from "./session";
 import { createCommandTool, runCommand, type CommandApprover } from "./tools/command";
@@ -493,7 +494,14 @@ export async function main(args = Bun.argv.slice(2)): Promise<void> {
   }
   const initialProvider = config.provider ?? "agnes";
   const model = new ModelProviderRouter({ providers: providerInstances, catalogs: catalogManagers, initialProvider });
-  const models = model;
+  const selectionStore = new ModelSelectionStore(workspace);
+  const selectionRestored = await applyPersistedModelSelection({
+    router: model,
+    catalogs: catalogManagers,
+    selection: await selectionStore.load().catch(() => undefined),
+  });
+  if (selectionRestored && tui) tui.setModel(`${model.currentProvider}/${model.currentModel}`);
+  const models = createPersistingModelManager(model, selectionStore);
   const reporter = createEventReporter();
   const recorder = cli.logEvents ? new RunRecorder(workspace) : undefined;
   const agent = new Agent({

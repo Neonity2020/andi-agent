@@ -147,7 +147,7 @@ REPL 会复用同一个 Agent、工具和审批终端。消息、模型回复和
 
 模型目录保存在 `.andi-agent/models.json`。第一次没有缓存时，`/models` 会向当前 Provider 获取并保存列表；之后直接读取内存或磁盘，不再重复发送网络请求。接入新模型后可用 `/models refresh` 更新当前 Provider，同时保留文件中其他 Provider 的目录。该版本化文件不保存 API Key，并与 session 等运行状态一起被 Git 忽略。
 
-模型切换只影响当前进程中的后续请求，不会修改 `.env` 或已保存的 session；重新启动后仍使用 `AGENT_MODEL`。图像、视频、embedding 等非 Chat Completions 模型不会出现在可选列表中。
+模型切换会立即生效并持久化到 `.andi-agent/selection.json`：重新启动 `andi` 时自动恢复上次使用的 Provider 和模型，不再回到默认模型。持久化选择代表最近一次交互式切换，优先于 `.env` 中的模型默认值（注意 Bun 会自动加载 `.env`，而 `.env.example` 本身就预置了这些键）；删除该文件即可回到 `.env`/内置默认。持久化的模型已不在当前目录中时会安全回退到默认模型，切换不会修改 `.env` 或已保存的 session。图像、视频、embedding 等非 Chat Completions 模型不会出现在可选列表中。
 
 ### 会话
 
