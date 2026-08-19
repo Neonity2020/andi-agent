@@ -77,6 +77,12 @@
 - TUI 流式预览和最终输出都会隐藏标签正文，只显示默认折叠的 `thinking (collapsed) · N chars` 摘要；普通答案正常渲染。
 - 未闭合的 `<think>` 也会被视为仍在思考，不会把内部内容直接显示到 TUI。
 
+### Weather 工具
+
+- `src/tools/weather.ts` 已纳入工具注册表，使用 Open-Meteo 地理编码和预报接口查询城市天气，不需要 API Key。
+- 工具返回当前温度、体感、天气状况、湿度、风速及未来三天预报；城市输入限制为 1–200 个字符。
+- 通过可注入的 fetcher 测试 API 请求、时区传递、输入校验和取消行为。
+
 ## 关键文件
 
 - `.plans/011-model-switching.md`：模型切换与 TUI picker 方案。
@@ -90,6 +96,8 @@
 - `src/tui/tui.ts`：交互选择器和全局按键处理。
 - `src/tui/input.ts`：Esc 延迟解析。
 - `src/tui/activity.ts`：流式状态与 MiniMax think 标签解析/折叠摘要。
+- `src/tools/weather.ts`：Open-Meteo 天气查询工具。
+- `test/weather.test.ts`：天气工具请求、格式化、校验和取消回归测试。
 - `test/model-catalog.test.ts`：目录 Store/Manager 测试。
 - `test/config.test.ts`、`test/repl.test.ts`、`test/tui.test.ts`、`test/agent.test.ts`：Provider 配置/切换、Ctrl-D 与当前模型身份回归测试。
 

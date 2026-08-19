@@ -45,6 +45,10 @@ EXA_BASE_URL=https://api.exa.ai
 
 未配置 Exa Key 时工具不会注册，其他功能不受影响。工具支持查询、1–10 条结果以及可选域名过滤，并返回标题、URL、发布日期、作者和高亮摘要。外部网页内容会作为不可信数据处理；Agent 应忽略网页中的指令，并在答案中引用结果 URL。API 协议依据 [Exa Search API 官方文档](https://exa.ai/docs/reference/search)。
 
+### Weather
+
+Agent 默认提供 `weather` 工具，通过 Open-Meteo 查询城市当前天气和未来三天预报，不需要额外 API Key。调用时传入中文或英文城市名，例如 `{"city":"北京"}`。
+
 配置 Key 后可手动执行一次真实 API 冒烟测试：
 
 ```bash
