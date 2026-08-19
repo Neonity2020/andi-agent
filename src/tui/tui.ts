@@ -94,6 +94,7 @@ export class Tui {
   #paintQueued = false;
   #closed = false;
   #lastFrame: string[] | null = null;
+  #lastCursorCell: number | undefined;
 
   constructor(options: TuiOptions) {
     this.#stdin = options.stdin;
@@ -492,25 +493,37 @@ export class Tui {
 
     lines.push(this.#statusLine(width));
 
+    // The cursor sits on the input line independent of the rendered frame, so
+    // compute its target cell up front: a left/right arrow move changes the
+    // cursor but leaves the frame text identical, and must still reposition it.
+    const cursorCell = this.#mode === "input"
+      ? this.#cursorColumn(width)
+      : undefined;
+
     // The spinner timer repaints constantly; skip writes when nothing
-    // changed (idle) so the terminal is untouched between keystrokes.
-    if (this.#lastFrame !== null && this.#framesEqual(this.#lastFrame, lines)) return;
+    // changed (idle) so the terminal is untouched between keystrokes. The
+    // cursor cell is included so pure cursor moves are never dropped.
+    if (this.#lastFrame !== null && this.#framesEqual(this.#lastFrame, lines) && cursorCell === this.#lastCursorCell) return;
     this.#lastFrame = lines;
+    this.#lastCursorCell = cursorCell;
     this.#screen.render(lines);
 
-    if (this.#mode === "input") {
-      // The input line is always the second row from the bottom of the
-      // region (status bar is last); the screen tracks the cursor there.
-      const prefixWidth = textWidth(this.#theme.symbols.prompt) + 1;
-      const cursorWidth = textWidth(this.#editor.getClusters().slice(0, this.#editor.getCursor()).join(""));
-      const budget = Math.max(width - prefixWidth, 1);
-      const scroll = Math.max(0, cursorWidth - budget + 1);
-      const column = Math.min(Math.max(prefixWidth + cursorWidth - scroll + 1, 1), width);
-      this.#screen.positionCursor(2, column);
+    if (this.#mode === "input" && cursorCell !== undefined) {
+      this.#screen.positionCursor(2, cursorCell);
       this.#write(showCursor());
     } else {
       this.#write(hideCursor());
     }
+  }
+
+  #cursorColumn(width: number): number {
+    // The input line is always the second row from the bottom of the
+    // region (status bar is last); the screen tracks the cursor there.
+    const prefixWidth = textWidth(this.#theme.symbols.prompt) + 1;
+    const cursorWidth = textWidth(this.#editor.getClusters().slice(0, this.#editor.getCursor()).join(""));
+    const budget = Math.max(width - prefixWidth, 1);
+    const scroll = Math.max(0, cursorWidth - budget + 1);
+    return Math.min(Math.max(prefixWidth + cursorWidth - scroll + 1, 1), width);
   }
 
   #selectionLines(selection: SelectRequest, width: number): string[] {
@@ -563,6 +576,7 @@ export class Tui {
     // Printing repaints the region without repositioning the cursor; force
     // the next paint to rewrite it.
     this.#lastFrame = null;
+    this.#lastCursorCell = undefined;
     this.#screen.print(lines.length > 0 ? [...lines, ""] : []);
   }
 

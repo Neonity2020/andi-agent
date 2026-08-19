@@ -292,6 +292,31 @@ describe("Tui", () => {
     expect(raw()).not.toContain("\x1b[2A\r");
   });
 
+  test("left/right arrows reposition the real cursor even when the frame text is unchanged", () => {
+    const { tui, stdin, raw } = createHarness();
+    tui.start();
+    void tui.read("you> ");
+    const cursorColumn = () => {
+      // The last ANSI cursor-to-column placement for the input line is the
+      // one right after the "\x1b[2A" lift that ends the region paint.
+      const matches = [...raw().matchAll(/\x1b\[2A\x1b\[(\d+)G/g)];
+      return matches.length === 0 ? undefined : Number(matches.at(-1)![1]);
+    };
+
+    stdin.send("abc");
+    const afterTyping = cursorColumn();
+
+    stdin.send("\x1b[D"); // left
+    const afterLeft = cursorColumn();
+
+    stdin.send("\x1b[C"); // right
+    const afterRight = cursorColumn();
+
+    // Cursor starts just after "abc", moves one cell left, then back right.
+    expect(afterTyping).toBe(afterRight);
+    expect(afterLeft).toBe((afterTyping ?? 0) - 1);
+  });
+
   test("forwards interrupts while running to the repl handler", async () => {
     const { tui, stdin } = createHarness();
     tui.start();
