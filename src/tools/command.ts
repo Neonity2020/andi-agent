@@ -120,7 +120,7 @@ export function createCommandTool(cwd: string, options: CommandToolOptions = {})
   return {
     name: "run_command",
     description:
-      "Run an approved test, typecheck, build, or lint command in the workspace without a shell. Use dedicated Git tools for Git operations.",
+      "Run an approved test, typecheck, build, or lint command in the workspace without a shell. Only use for project verification tasks (e.g. bun test, npm test, tsc --noEmit). NEVER use for executing ad-hoc scripts (bun -e, node -e), previewing markdown/tables, or calculating values. Use dedicated Git tools for Git operations.",
     parameters: {
       type: "object",
       properties: {
