@@ -9,6 +9,12 @@ function decode(...chunks: Uint8Array[]): KeyEvent[] {
 const bytes = (text: string): Uint8Array => new TextEncoder().encode(text);
 
 describe("InputDecoder", () => {
+  test("flushes a lone escape for modal cancellation", () => {
+    const input = new InputDecoder();
+    expect(input.push(new Uint8Array([0x1b]))).toEqual([]);
+    expect(input.flushEscape()).toEqual({ key: "escape" });
+  });
+
   test("decodes plain text runs into a single event", () => {
     expect(decode(bytes("hello"))).toEqual([{ key: "text", text: "hello" }]);
   });

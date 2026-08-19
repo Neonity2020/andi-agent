@@ -1,6 +1,6 @@
 import { Agent, type AgentEvent } from "../agent";
 import type { AgentConfig } from "../config";
-import { OpenAICompatibleProvider } from "../model/openai-compatible";
+import { createModelProvider } from "../model/providers";
 import type { ModelProvider } from "../model/types";
 import { RunRecorder } from "../runtime/recorder";
 import { SessionStore } from "../session";
@@ -25,7 +25,7 @@ export interface ScheduledAgentRunnerOptions {
 }
 
 export function createScheduledAgentRunner(options: ScheduledAgentRunnerOptions): ScheduledTaskRunner {
-  const model = options.model ?? new OpenAICompatibleProvider(options.config);
+  const model = options.model ?? createModelProvider(options.config);
   const memory = new MemoryStore(options.workspace);
   const tools = new ToolRegistry([
     ...createWorkspaceTools(options.workspace),

@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { createAgentToolRegistry, main, parseArguments, renderReadlinePrompt } from "../src/cli";
+import {
+  createAgentToolRegistry,
+  main,
+  parseArguments,
+  renderReadlinePrompt,
+  resolveSessionId,
+} from "../src/cli";
 import { Workspace } from "../src/tools/workspace";
 
 describe("renderReadlinePrompt", () => {
@@ -60,6 +66,17 @@ describe("parseArguments", () => {
 describe("main", () => {
   test("defaults to REPL mode when invoked without arguments", async () => {
     await expect(main([])).rejects.toThrow("--repl requires an interactive TTY");
+  });
+});
+
+describe("resolveSessionId", () => {
+  test("uses a persistent default session for REPL mode", () => {
+    expect(resolveSessionId({ repl: true, session: undefined })).toBe("default");
+  });
+
+  test("preserves explicit sessions and does not default one-shot runs", () => {
+    expect(resolveSessionId({ repl: true, session: "feature-auth" })).toBe("feature-auth");
+    expect(resolveSessionId({ repl: false, session: undefined })).toBeUndefined();
   });
 });
 

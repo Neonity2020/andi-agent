@@ -1,9 +1,11 @@
 import type { AgentCheckpoint, AgentRunOptions, AgentRunResult } from "./agent";
 import type { Message, RunUsage } from "./model/types";
+import type { ModelCatalogEntry } from "./model/types";
 import { isCancellationError } from "./runtime/abort";
 import { repairIncompleteToolCalls } from "./session";
 import { addRunUsage, emptyRunUsage } from "./usage";
 import type { MemoryDocument, MemoryMatch, MemorySummary } from "./memory/types";
+import type { AgentProvider } from "./config";
 
 export interface ReplAgent {
   runWithHistory(
@@ -20,16 +22,46 @@ export interface ReplSessionStore {
 
 export interface ReplIO {
   read(prompt: string): Promise<string | null>;
+  select?(options: ReplSelectOptions): Promise<string | null>;
   write(message: string): void;
   error(message: string): void;
   onInterrupt?(handler: () => void): void;
+  onExit?(handler: () => void): void;
   close?(): void;
+}
+
+export interface ReplSelectItem {
+  value: string;
+  label: string;
+  description?: string;
+}
+
+export interface ReplSelectOptions {
+  title: string;
+  items: readonly ReplSelectItem[];
+  selectedValue?: string;
 }
 
 export interface ReplMemoryStore {
   list(signal?: AbortSignal): Promise<MemorySummary[]>;
   search(query: string, limit?: number, signal?: AbortSignal): Promise<MemoryMatch[]>;
   read(id: string, signal?: AbortSignal): Promise<MemoryDocument>;
+}
+
+export interface ReplModelManager {
+  readonly currentModel: string;
+  readonly currentProvider?: AgentProvider;
+  availableProviders?(): readonly AgentProvider[];
+  selectProvider?(provider: AgentProvider): void | Promise<void>;
+  listAllModels?(signal?: AbortSignal, refresh?: boolean): Promise<readonly ReplQualifiedModel[]>;
+  selectQualifiedModel?(provider: AgentProvider, id: string): void | Promise<void>;
+  listModels(signal?: AbortSignal): Promise<ModelCatalogEntry[]>;
+  refreshModels?(signal?: AbortSignal): Promise<ModelCatalogEntry[]>;
+  selectModel(id: string): void | Promise<void>;
+}
+
+export interface ReplQualifiedModel extends ModelCatalogEntry {
+  provider: AgentProvider;
 }
 
 export interface ReplOptions {
@@ -41,6 +73,8 @@ export interface ReplOptions {
   sessionId?: string;
   sessionStore?: ReplSessionStore;
   memory?: ReplMemoryStore;
+  models?: ReplModelManager;
+  onModelChanged?: (model: string) => void;
   beforeTask?: () => void;
   onResult?: (result: AgentRunResult) => void;
   onError?: () => void;
@@ -54,7 +88,12 @@ const REPL_HELP = `/help     Show REPL commands
 /memory [list]          List durable workspace memories
 /memory search <query>  Search durable workspace memories
 /memory show <id>       Show one durable workspace memory
-/exit     Exit the REPL`;
+/models                 Select a cached Chat Completions model
+/models refresh         Refresh the current provider's model cache
+/provider               Show configured model providers
+/provider <id>          Switch provider (for example: /provider minimax)
+/exit     Exit the REPL
+Ctrl-D    Exit immediately from any TUI state`;
 
 export async function runRepl(options: ReplOptions): Promise<Message[]> {
   let history = [...(options.initialHistory ?? [])];
@@ -74,6 +113,13 @@ export async function runRepl(options: ReplOptions): Promise<Message[]> {
       return;
     }
     exitRequested = true;
+    options.io.close?.();
+  });
+  options.io.onExit?.(() => {
+    exitRequested = true;
+    if (activeController && !activeController.signal.aborted) {
+      activeController.abort(new Error("Exited by user"));
+    }
     options.io.close?.();
   });
 
@@ -114,7 +160,7 @@ export async function runRepl(options: ReplOptions): Promise<Message[]> {
       }
       if (task === "/status") {
         options.io.write(
-          `session: ${options.sessionId ?? "memory-only"} · state: ${activeController ? "running" : "idle"} · messages: ${history.length}`,
+          `session: ${options.sessionId ?? "memory-only"} · model: ${options.models?.currentProvider ? `${options.models.currentProvider}/` : ""}${options.models?.currentModel ?? "unknown"} · state: ${activeController ? "running" : "idle"} · messages: ${history.length}`,
         );
         continue;
       }
@@ -136,6 +182,128 @@ export async function runRepl(options: ReplOptions): Promise<Message[]> {
         lastRunUsage = emptyRunUsage();
         await persistHistory();
         options.io.write("Conversation history cleared.");
+        continue;
+      }
+      if (task === "/models" || task === "/models refresh") {
+        if (!options.models) {
+          options.io.error("Model switching is unavailable.");
+          continue;
+        }
+        const modelManager = options.models;
+        const refresh = task === "/models refresh";
+        const refreshModels = modelManager.refreshModels;
+        if (refresh && !refreshModels) {
+          options.io.error("Model catalog refresh is unavailable.");
+          continue;
+        }
+        const listController = new AbortController();
+        activeController = listController;
+        let models: ModelCatalogEntry[];
+        let qualifiedModels: readonly ReplQualifiedModel[] | undefined;
+        try {
+          if (modelManager.listAllModels) {
+            qualifiedModels = await modelManager.listAllModels.call(modelManager, listController.signal, refresh);
+            models = [...qualifiedModels];
+          } else {
+            models = refresh
+              ? await refreshModels!.call(options.models, listController.signal)
+              : await modelManager.listModels.call(modelManager, listController.signal);
+          }
+        } catch (error) {
+          if (isCancellationError(error)) options.io.write("Model listing cancelled.");
+          else options.io.error(`[error] ${error instanceof Error ? error.message : String(error)}`);
+          continue;
+        } finally {
+          if (activeController === listController) activeController = undefined;
+        }
+        try {
+          let selection: string | null;
+          const picker = options.io.select;
+          const usesPicker = picker !== undefined;
+          if (picker) {
+            selection = await picker.call(options.io, {
+              title: "Select model",
+              items: models.map((model) => ({
+                value: qualifiedModels ? `${(model as ReplQualifiedModel).provider}/${model.id}` : model.id,
+                label: qualifiedModels ? `${(model as ReplQualifiedModel).provider}/${model.id}` : model.id,
+                ...(model.ownedBy ? { description: model.ownedBy } : {}),
+              })),
+              selectedValue: qualifiedModels
+                ? `${modelManager.currentProvider ?? "agnes"}/${modelManager.currentModel}`
+                : modelManager.currentModel,
+            });
+          } else {
+            options.io.write(`Available models · current: ${modelManager.currentModel}`);
+            models.forEach((model, index) => {
+              const value = qualifiedModels ? `${(model as ReplQualifiedModel).provider}/${model.id}` : model.id;
+              const current = value === (qualifiedModels
+                ? `${modelManager.currentProvider ?? "agnes"}/${modelManager.currentModel}`
+                : modelManager.currentModel)
+                ? " *"
+                : "";
+              options.io.write(`${index + 1}. ${value}${current}`);
+            });
+            selection = await options.io.read("model> ");
+          }
+          if (selection === null) {
+            if (!options.io.select) exitRequested = true;
+            continue;
+          }
+          const value = selection.trim();
+          if (value.length === 0) {
+            options.io.write("Model selection cancelled.");
+            continue;
+          }
+          const selected = qualifiedModels
+            ? (/^[1-9]\d*$/.test(value)
+              ? qualifiedModels[Number(value) - 1]
+              : qualifiedModels.find((model) => `${model.provider}/${model.id}` === value))
+            : undefined;
+          const selectedId = selected?.id ?? (qualifiedModels ? undefined : options.io.select
+            ? models.find((model) => model.id === value)?.id
+            : resolveModelSelection(value, models));
+          if (!selectedId || (qualifiedModels && !selected)) {
+            options.io.error(`Invalid model selection: ${value}`);
+            continue;
+          }
+          if (qualifiedModels && modelManager.selectQualifiedModel && selected) {
+            await modelManager.selectQualifiedModel(selected.provider, selectedId);
+            options.onModelChanged?.(selectedId);
+            if (!usesPicker) options.io.write(`Switched model to ${selected.provider}/${selectedId}.`);
+          } else {
+            await modelManager.selectModel(selectedId);
+            options.onModelChanged?.(selectedId);
+            if (!usesPicker) options.io.write(`Switched model to ${selectedId}.`);
+          }
+        } catch (error) {
+          options.io.error(`[error] ${error instanceof Error ? error.message : String(error)}`);
+        }
+        continue;
+      }
+      if (task === "/provider" || task.startsWith("/provider ")) {
+        const providerManager = options.models;
+        const providers = providerManager?.availableProviders?.() ?? [];
+        if (!providerManager?.selectProvider || providers.length === 0) {
+          options.io.error("Provider switching is unavailable.");
+          continue;
+        }
+        const requested = task.slice("/provider".length).trim();
+        if (!requested) {
+          options.io.write(`Providers · current: ${providerManager.currentProvider ?? "unknown"}`);
+          providers.forEach((provider) => options.io.write(`${provider}${provider === providerManager.currentProvider ? " *" : ""}`));
+          continue;
+        }
+        if (!providers.includes(requested as AgentProvider)) {
+          options.io.error(`Provider '${requested}' is not configured.`);
+          continue;
+        }
+        try {
+          await providerManager.selectProvider(requested as AgentProvider);
+          options.onModelChanged?.(providerManager.currentModel);
+          options.io.write(`Switched provider to ${requested} · model: ${providerManager.currentModel}.`);
+        } catch (error) {
+          options.io.error(`[error] ${error instanceof Error ? error.message : String(error)}`);
+        }
         continue;
       }
       if (task === "/memory" || task === "/memory list") {
@@ -235,6 +403,14 @@ export async function runRepl(options: ReplOptions): Promise<Message[]> {
 
   options.io.write("REPL closed.");
   return history;
+}
+
+export function resolveModelSelection(
+  selection: string,
+  models: readonly ModelCatalogEntry[],
+): string | undefined {
+  if (/^[1-9]\d*$/.test(selection)) return models[Number(selection) - 1]?.id;
+  return models.find((model) => model.id === selection)?.id;
 }
 
 function formatUsage(usage: RunUsage): string {

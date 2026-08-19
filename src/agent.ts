@@ -45,6 +45,7 @@ export interface AgentOptions {
   model: ModelProvider;
   tools: ToolRegistry;
   systemPrompt?: string;
+  modelName?: string;
   kbPath?: string;
   memory?: MemoryProvider;
   maxTurns?: number;
@@ -65,7 +66,7 @@ Never claim that a check passed unless its tool result confirms it. Explain the 
 const KB_INSTRUCTION = (kbPath: string) => `
 If "${kbPath}/README.md" exists in the current workspace, treat "${kbPath}/" as a local knowledge base of small Markdown files. Start with the index, then page in only the relevant doc(s) with read_file when a task needs specific reference material (for example a model provider's endpoint, model name, or auth). Never paste the whole knowledge base into context.`;
 
-function defaultSystemPrompt(kbPath: string): string {
+function defaultSystemPrompt(kbPath: string, _modelName?: string): string {
   return `${DEFAULT_SYSTEM_PROMPT}${KB_INSTRUCTION(kbPath)}`;
 }
 
@@ -81,7 +82,7 @@ export class Agent {
   constructor(options: AgentOptions) {
     this.#model = options.model;
     this.#tools = options.tools;
-    this.#systemPrompt = options.systemPrompt ?? defaultSystemPrompt(options.kbPath ?? "kb");
+    this.#systemPrompt = options.systemPrompt ?? defaultSystemPrompt(options.kbPath ?? "kb", options.modelName);
     this.#memory = options.memory;
     this.#maxTurns = options.maxTurns ?? 12;
     this.#maxContextChars = options.maxContextChars ?? 120_000;
@@ -108,8 +109,10 @@ export class Agent {
     const runId = randomUUID();
     let usage = emptyRunUsage();
     let checkpointHealthy = true;
-    let messages: Message[] = history.length > 0 ? [...history] : [{ role: "system", content: this.#systemPrompt }];
-    if (messages[0]?.role !== "system") messages.unshift({ role: "system", content: this.#systemPrompt });
+    const systemPrompt = this.#systemPromptWithModelIdentity();
+    let messages: Message[] = history.length > 0 ? [...history] : [{ role: "system", content: systemPrompt }];
+    if (messages[0]?.role === "system") messages[0] = { role: "system", content: this.#replaceModelIdentity(messages[0].content, systemPrompt) };
+    else messages.unshift({ role: "system", content: systemPrompt });
     messages.push({ role: "user", content: task });
     const definitions = this.#tools.definitions();
     let memoryContext = "";
@@ -123,6 +126,18 @@ export class Agent {
         throw error;
       }
     };
+
+    const identityAnswer = modelIdentityAnswer(task, this.#model.getModelIdentity?.());
+    if (identityAnswer) {
+      await checkpoint("running");
+      await this.#emit({ type: "turn_started", runId, turn: 1, messageCount: messages.length });
+      await this.#emit({ type: "model_text_delta", runId, turn: 1, delta: identityAnswer });
+      await this.#emit({ type: "model_completed", runId, turn: 1, toolCallCount: 0, durationMs: 0 });
+      messages.push({ role: "assistant", content: identityAnswer, toolCalls: [] });
+      await checkpoint("idle");
+      await this.#emit({ type: "agent_completed", runId, turns: 1 });
+      return { output: identityAnswer, messages, runId, usage };
+    }
 
     try {
       throwIfAborted(options.signal);
@@ -246,9 +261,31 @@ export class Agent {
     }
   }
 
+  #systemPromptWithModelIdentity(): string {
+    const identity = this.#model.getModelIdentity?.();
+    if (!identity) return this.#systemPrompt;
+    return `${this.#systemPrompt}\n\nCURRENT MODEL IDENTITY (authoritative runtime state):\n- Provider: ${identity.provider}\n- Model: ${identity.model}\nIf the user asks which model or provider you are using, answer from this identity rather than guessing from the conversation.`;
+  }
+
+  #replaceModelIdentity(existing: string, current: string): string {
+    return existing
+      .replace(/\n\nCURRENT MODEL IDENTITY \(authoritative runtime state\):[\s\S]*$/m, "")
+      .replace(/\nYou are currently running on: .*$/m, "") + current.slice(this.#systemPrompt.length);
+  }
+
   async #emit(event: AgentEvent): Promise<void> {
     await this.#onEvent?.(event);
   }
+}
+
+function modelIdentityAnswer(task: string, identity: { provider: string; model: string } | undefined): string | undefined {
+  if (!identity) return undefined;
+  const normalized = task.trim().toLowerCase();
+  const asksAboutModel =
+    /模型|model|provider/i.test(normalized) &&
+    /哪款|什么|哪个|当前|正在|使用|which|what|using/i.test(normalized);
+  if (!asksAboutModel) return undefined;
+  return `当前使用的模型是 ${identity.model}（Provider: ${identity.provider}）。`;
 }
 
 function withMemoryContext(messages: readonly Message[], memoryContext: string): Message[] {

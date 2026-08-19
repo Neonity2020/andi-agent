@@ -47,12 +47,50 @@ export function renderCancelledTool(name: string, theme: Theme): string {
   return `${theme.style.dim(theme.symbols.dot)} ${theme.toolText(name)} ${theme.style.dim("cancelled")}`;
 }
 
+export interface ThinkTagResult {
+  content: string;
+  thinking: string;
+  thinkingOpen: boolean;
+}
+
+export function parseThinkTags(input: string): ThinkTagResult {
+  let content = "";
+  let thinking = "";
+  let cursor = 0;
+  let thinkingOpen = false;
+  while (cursor < input.length) {
+    if (thinkingOpen) {
+      const close = input.slice(cursor).search(/<\/think\s*>/i);
+      if (close < 0) {
+        thinking += input.slice(cursor);
+        return { content, thinking, thinkingOpen: true };
+      }
+      thinking += input.slice(cursor, cursor + close);
+      cursor += close + (input.slice(cursor + close).match(/^<\/think\s*>/i)?.[0].length ?? 0);
+      thinkingOpen = false;
+      continue;
+    }
+    const open = input.slice(cursor).search(/<think\s*>/i);
+    if (open < 0) {
+      content += input.slice(cursor);
+      break;
+    }
+    content += input.slice(cursor, cursor + open);
+    cursor += open + (input.slice(cursor + open).match(/^<think\s*>/i)?.[0].length ?? 0);
+    thinkingOpen = true;
+  }
+  return { content, thinking, thinkingOpen };
+}
+
 export type ActivityPhase = "idle" | "thinking" | "streaming";
 
 export class ActivityState {
   #phase: ActivityPhase = "idle";
   #turnStartedAt: number | undefined;
+  #rawStream = "";
   #stream = "";
+  #thinking = "";
+  #thinkingOpen = false;
   #tools: RunningTool[] = [];
 
   get phase(): ActivityPhase {
@@ -62,26 +100,41 @@ export class ActivityState {
   beginTurn(at: number): void {
     this.#phase = "thinking";
     this.#turnStartedAt = at;
+    this.#rawStream = "";
     this.#stream = "";
+    this.#thinking = "";
+    this.#thinkingOpen = false;
     this.#tools = [];
   }
 
   endTurn(): void {
     this.#phase = "idle";
     this.#turnStartedAt = undefined;
+    this.#rawStream = "";
     this.#stream = "";
+    this.#thinking = "";
+    this.#thinkingOpen = false;
     this.#tools = [];
   }
 
   appendDelta(text: string): void {
     if (this.#phase === "thinking") this.#phase = "streaming";
-    this.#stream += text;
+    this.#rawStream += text;
+    const parsed = parseThinkTags(this.#rawStream);
+    this.#stream = parsed.content;
+    this.#thinking = parsed.thinking;
+    this.#thinkingOpen = parsed.thinkingOpen;
   }
 
   takeStream(): string {
     const stream = this.#stream;
+    this.#rawStream = "";
     this.#stream = "";
     return stream;
+  }
+
+  takeThinking(): { text: string; open: boolean } {
+    return { text: this.#thinking, open: this.#thinkingOpen };
   }
 
   toolStarted(id: string, name: string, startedAt: number): void {
@@ -109,6 +162,14 @@ export class ActivityState {
       lines.push(`${frame} ${theme.toolText(tool.name)}${elapsed}`);
     }
     if (lines.length > 0) return lines;
+
+    if (this.#thinking.length > 0 || this.#thinkingOpen) {
+      const elapsed = this.#turnStartedAt === undefined
+        ? ""
+        : theme.style.dim(` ${theme.symbols.dot} ${formatDuration(now - this.#turnStartedAt)}`);
+      const size = this.#thinking.trim().length > 0 ? ` ${theme.symbols.dot} ${this.#thinking.trim().length} chars` : "";
+      lines.push(`${theme.brandText(spinnerFrame(now - (this.#turnStartedAt ?? now)))} ${theme.style.dim(`thinking (collapsed)${size}`)}${elapsed}`);
+    }
 
     if (this.#phase === "thinking") {
       const elapsed =

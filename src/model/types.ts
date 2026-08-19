@@ -39,10 +39,28 @@ export interface CompletionOptions {
   signal?: AbortSignal;
 }
 
+export interface ModelIdentity {
+  provider: string;
+  model: string;
+}
+
 export interface ModelProvider {
+  getModelIdentity?(): ModelIdentity;
   complete(
     messages: readonly Message[],
     tools: readonly ModelToolDefinition[],
     options?: CompletionOptions,
   ): Promise<AssistantTurn>;
+}
+
+export interface ModelCatalogEntry {
+  id: string;
+  ownedBy?: string;
+}
+
+export interface SwitchableModelProvider extends ModelProvider {
+  readonly currentModel: string;
+  listModels(signal?: AbortSignal): Promise<ModelCatalogEntry[]>;
+  loadModelCatalog(models: readonly ModelCatalogEntry[]): void;
+  selectModel(id: string): void;
 }

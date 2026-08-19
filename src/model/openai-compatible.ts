@@ -2,19 +2,30 @@ import type {
   AssistantTurn,
   CompletionOptions,
   Message,
-  ModelProvider,
+  ModelCatalogEntry,
+  ModelIdentity,
   ModelToolDefinition,
+  SwitchableModelProvider,
   TokenUsage,
   ToolCall,
 } from "./types";
-import { throwIfAborted } from "../runtime/abort";
+import { cancellationError, throwIfAborted } from "../runtime/abort";
 
 export interface OpenAICompatibleOptions {
   apiKey: string;
   model: string;
   baseUrl?: string;
   fetcher?: typeof fetch;
+  modelListTimeoutMs?: number;
+  providerId?: string;
 }
+
+const MAX_MODEL_COUNT = 500;
+const MAX_MODEL_ID_LENGTH = 200;
+const MAX_MODEL_LIST_BYTES = 256_000;
+const DEFAULT_MODEL_LIST_TIMEOUT_MS = 15_000;
+const NON_CHAT_MODEL_PATTERN =
+  /(?:^|[-_.])(image|video|embedding|embeddings|audio|tts|whisper|moderation|dall-e)(?:[-_.]|$)/i;
 
 interface ApiToolCall {
   id?: unknown;
@@ -166,11 +177,16 @@ async function parseStreamingResponse(
   };
 }
 
-export class OpenAICompatibleProvider implements ModelProvider {
+class ModelListResponseError extends Error {}
+
+export class OpenAICompatibleProvider implements SwitchableModelProvider {
   readonly #apiKey: string;
-  readonly #model: string;
+  #model: string;
   readonly #baseUrl: string;
   readonly #fetcher: typeof fetch;
+  readonly #modelListTimeoutMs: number;
+  readonly #providerId: string;
+  #selectableModelIds: Set<string> | undefined;
 
   constructor(options: OpenAICompatibleOptions) {
     if (options.apiKey.length === 0) throw new Error("apiKey is required");
@@ -178,6 +194,116 @@ export class OpenAICompatibleProvider implements ModelProvider {
     this.#model = options.model;
     this.#baseUrl = (options.baseUrl ?? "https://apihub.agnes-ai.com/v1").replace(/\/$/, "");
     this.#fetcher = options.fetcher ?? fetch;
+    this.#modelListTimeoutMs = options.modelListTimeoutMs ?? DEFAULT_MODEL_LIST_TIMEOUT_MS;
+    this.#providerId = options.providerId ?? "openai-compatible";
+    if (!Number.isInteger(this.#modelListTimeoutMs) || this.#modelListTimeoutMs < 1 || this.#modelListTimeoutMs > 60_000) {
+      throw new Error("modelListTimeoutMs must be an integer from 1 to 60000");
+    }
+  }
+
+  get currentModel(): string {
+    return this.#model;
+  }
+
+  getModelIdentity(): ModelIdentity {
+    return { provider: this.#providerId, model: this.#model };
+  }
+
+  async listModels(signal?: AbortSignal): Promise<ModelCatalogEntry[]> {
+    throwIfAborted(signal);
+    const controller = new AbortController();
+    let timedOut = false;
+    const onAbort = (): void => controller.abort(signal?.reason);
+    signal?.addEventListener("abort", onAbort, { once: true });
+    const timer = setTimeout(() => {
+      timedOut = true;
+      controller.abort(new Error("Model list timed out"));
+    }, this.#modelListTimeoutMs);
+    try {
+      const response = await this.#fetcher(`${this.#baseUrl}/models`, {
+        method: "GET",
+        headers: { authorization: `Bearer ${this.#apiKey}` },
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        const detail = await readResponseTextLimited(response, 1_000);
+        throw new ModelListResponseError(
+          `Model list request failed (${response.status}): ${detail}`,
+        );
+      }
+
+      const responseText = await readResponseTextLimited(response, MAX_MODEL_LIST_BYTES);
+      let payload: unknown;
+      try {
+        payload = JSON.parse(responseText);
+      } catch {
+        throw new ModelListResponseError("Model list returned invalid JSON");
+      }
+      if (!isRecord(payload) || !Array.isArray(payload.data)) {
+        throw new ModelListResponseError("Model list returned an invalid response");
+      }
+
+      const seen = new Set<string>();
+      const models: ModelCatalogEntry[] = [];
+      for (const value of payload.data.slice(0, MAX_MODEL_COUNT)) {
+        if (!isRecord(value) || typeof value.id !== "string") continue;
+        const id = value.id.trim();
+        if (
+          id.length === 0 ||
+          id.length > MAX_MODEL_ID_LENGTH ||
+          seen.has(id) ||
+          NON_CHAT_MODEL_PATTERN.test(id)
+        ) continue;
+        seen.add(id);
+        models.push({
+          id,
+          ...(typeof value.owned_by === "string" && value.owned_by.length > 0
+            ? { ownedBy: value.owned_by.slice(0, 120) }
+            : {}),
+        });
+      }
+      if (models.length === 0) {
+        throw new ModelListResponseError("Model list did not contain any Chat Completions models");
+      }
+      this.loadModelCatalog(models);
+      return models;
+    } catch (error) {
+      throw modelListError(error, signal, timedOut, this.#modelListTimeoutMs, this.#apiKey);
+    } finally {
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
+    }
+  }
+
+  selectModel(id: string): void {
+    const normalized = id.trim();
+    if (!this.#selectableModelIds) throw new Error("List models before selecting one");
+    if (!this.#selectableModelIds.has(normalized)) {
+      throw new Error(`Model '${normalized}' is not in the current selectable model list`);
+    }
+    this.#model = normalized;
+  }
+
+  loadModelCatalog(models: readonly ModelCatalogEntry[]): void {
+    if (models.length === 0 || models.length > MAX_MODEL_COUNT) {
+      throw new Error(`Model catalog must contain 1 to ${MAX_MODEL_COUNT} models`);
+    }
+    const ids = new Set<string>();
+    for (const model of models) {
+      const id = model.id.trim();
+      if (
+        id.length === 0 ||
+        id.length > MAX_MODEL_ID_LENGTH ||
+        id !== model.id ||
+        ids.has(id) ||
+        NON_CHAT_MODEL_PATTERN.test(id)
+      ) {
+        throw new Error("Model catalog contains an invalid or duplicate Chat Completions model ID");
+      }
+      ids.add(id);
+    }
+    this.#selectableModelIds = ids;
   }
 
   async complete(
@@ -228,4 +354,43 @@ export class OpenAICompatibleProvider implements ModelProvider {
       ...(usage ? { usage } : {}),
     };
   }
+}
+
+function modelListError(
+  error: unknown,
+  signal: AbortSignal | undefined,
+  timedOut: boolean,
+  timeoutMs: number,
+  apiKey: string,
+): Error {
+  if (signal?.aborted) return cancellationError(signal);
+  if (timedOut) return new Error(`Model list timed out after ${timeoutMs}ms`);
+  if (error instanceof ModelListResponseError) return new Error(redact(error.message, apiKey));
+  return new Error(`Model list request failed: ${redact(String(error), apiKey)}`);
+}
+
+async function readResponseTextLimited(response: Response, maxBytes: number): Promise<string> {
+  if (!response.body) return "";
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let size = 0;
+  let text = "";
+  while (true) {
+    const chunk = await reader.read();
+    if (chunk.done) return text + decoder.decode();
+    size += chunk.value.byteLength;
+    if (size > maxBytes) {
+      await reader.cancel();
+      throw new ModelListResponseError(`Model list response exceeded ${maxBytes} bytes`);
+    }
+    text += decoder.decode(chunk.value, { stream: true });
+  }
+}
+
+function redact(value: string, secret: string): string {
+  return secret.length > 0 ? value.replaceAll(secret, "[REDACTED]") : value;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

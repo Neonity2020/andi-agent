@@ -5,7 +5,8 @@
 
 import type { AgentEvent } from "../agent";
 import type { AgentRunResult } from "../agent";
-import { ActivityState, renderCancelledTool, renderSealedTool, renderUserEcho } from "./activity";
+import type { ReplSelectItem, ReplSelectOptions } from "../repl";
+import { ActivityState, parseThinkTags, renderCancelledTool, renderSealedTool, renderUserEcho } from "./activity";
 import {
   disableBracketedPaste,
   enableBracketedPaste,
@@ -23,6 +24,7 @@ export interface TuiStdin {
   on(event: "close", listener: () => void): void;
   setRawMode(mode: boolean): void;
   resume(): void;
+  pause?(): void;
 }
 
 export interface TuiStatus {
@@ -42,7 +44,7 @@ export interface TuiOptions {
   history?: readonly string[];
 }
 
-type Mode = "input" | "running" | "approval";
+type Mode = "input" | "running" | "approval" | "select";
 
 interface ReadWaiter {
   resolve: (line: string | null) => void;
@@ -53,8 +55,19 @@ interface ApprovalRequest {
   resolve: (approved: boolean) => void;
 }
 
+interface SelectRequest {
+  title: string;
+  items: readonly ReplSelectItem[];
+  currentValue: string | undefined;
+  query: string;
+  selectedIndex: number;
+  resolve: (value: string | null) => void;
+}
+
 const PAINT_COALESCE_MS = 16;
 const SPINNER_MS = 90;
+const ESCAPE_DELAY_MS = 25;
+const SELECT_PAGE_SIZE = 8;
 
 export class Tui {
   readonly #stdin: TuiStdin;
@@ -72,9 +85,12 @@ export class Tui {
   #mode: Mode = "input";
   #waiters: ReadWaiter[] = [];
   #approval: ApprovalRequest | undefined;
+  #selection: SelectRequest | undefined;
   #interruptHandler: (() => void) | undefined;
+  #exitHandler: (() => void) | undefined;
   #turnSealedOutput = true;
   #spinnerTimer: ReturnType<typeof setInterval> | undefined;
+  #escapeTimer: ReturnType<typeof setTimeout> | undefined;
   #paintQueued = false;
   #closed = false;
   #lastFrame: string[] | null = null;
@@ -117,6 +133,26 @@ export class Tui {
     });
   }
 
+  select(options: ReplSelectOptions): Promise<string | null> {
+    if (this.#closed || options.items.length === 0) return Promise.resolve(null);
+    return new Promise((resolve) => {
+      const selectedIndex = Math.max(
+        options.items.findIndex((item) => item.value === options.selectedValue),
+        0,
+      );
+      this.#selection = {
+        title: options.title,
+        items: options.items,
+        currentValue: options.selectedValue,
+        query: "",
+        selectedIndex,
+        resolve,
+      };
+      this.#mode = "select";
+      this.#schedulePaint();
+    });
+  }
+
   write(message: string): void {
     this.#seal(message.split("\n"));
   }
@@ -129,10 +165,15 @@ export class Tui {
     this.#interruptHandler = handler;
   }
 
+  onExit(handler: () => void): void {
+    this.#exitHandler = handler;
+  }
+
   close(): void {
     if (this.#closed) return;
     this.#closed = true;
     if (this.#spinnerTimer) clearInterval(this.#spinnerTimer);
+    if (this.#escapeTimer) clearTimeout(this.#escapeTimer);
     this.#screen.dispose();
     this.#write(`${showCursor()}${disableBracketedPaste()}`);
     try {
@@ -140,10 +181,15 @@ export class Tui {
     } catch {
       // stdin may already be destroyed during shutdown
     }
+    this.#stdin.pause?.();
     for (const waiter of this.#waiters.splice(0)) waiter.resolve(null);
     if (this.#approval) {
       this.#approval.resolve(false);
       this.#approval = undefined;
+    }
+    if (this.#selection) {
+      this.#selection.resolve(null);
+      this.#selection = undefined;
     }
   }
 
@@ -159,7 +205,11 @@ export class Tui {
       this.#activity.appendDelta(event.delta);
       break;
     case "model_completed": {
+      const thinking = this.#activity.takeThinking();
       const stream = this.#activity.takeStream();
+      if (thinking.text.trim().length > 0 || thinking.open) {
+        this.#seal([this.#theme.style.dim(`thinking (collapsed) ${this.#theme.symbols.dot} ${thinking.text.trim().length} chars`)]);
+      }
       if (stream.trim().length > 0) {
         this.#seal(renderMarkdown(stream.trim(), this.#width(), this.#theme));
         this.#turnSealedOutput = true;
@@ -192,7 +242,11 @@ export class Tui {
       this.#mode = "input";
       break;
     case "agent_cancelled": {
+      const thinking = this.#activity.takeThinking();
       const leftover = this.#activity.takeStream();
+      if (thinking.text.trim().length > 0 || thinking.open) {
+        this.#seal([this.#theme.style.dim(`thinking (collapsed) ${this.#theme.symbols.dot} ${thinking.text.trim().length} chars`)]);
+      }
       if (leftover.trim().length > 0) this.#seal([this.#theme.style.dim(leftover.trim())]);
       for (const tool of this.#activity.drainTools()) {
         this.#seal([renderCancelledTool(tool.name, this.#theme)]);
@@ -216,13 +270,22 @@ export class Tui {
   handleResult(result: AgentRunResult): void {
     if (this.#turnSealedOutput) return;
     this.#turnSealedOutput = true;
-    const output = result.output.trim();
+    const parsed = parseThinkTags(result.output);
+    if (parsed.thinking.trim().length > 0 || parsed.thinkingOpen) {
+      this.#seal([this.#theme.style.dim(`thinking (collapsed) ${parsed.thinking.trim().length} chars`)]);
+    }
+    const output = parsed.content.trim();
     if (output.length > 0) this.#seal(renderMarkdown(output, this.#width(), this.#theme));
   }
 
   // Marks the turn as running (input disabled until the turn finishes).
   beginRun(): void {
     this.#mode = "running";
+    this.#schedulePaint();
+  }
+
+  setModel(model: string): void {
+    this.#status.model = model;
     this.#schedulePaint();
   }
 
@@ -257,11 +320,21 @@ export class Tui {
   // ---- Input ----
 
   #onData(chunk: Uint8Array): void {
+    if (this.#escapeTimer) clearTimeout(this.#escapeTimer);
     for (const event of this.#decoder.push(chunk)) this.#onKey(event);
+    this.#escapeTimer = setTimeout(() => {
+      this.#escapeTimer = undefined;
+      const event = this.#decoder.flushEscape();
+      if (event) this.#onKey(event);
+    }, ESCAPE_DELAY_MS);
   }
 
   #onKey(event: KeyEvent): void {
     if (this.#closed) return;
+    if (event.key === "eof") {
+      this.#exitHandler?.();
+      return;
+    }
 
     if (this.#mode === "approval" && this.#approval) {
       // y approves; any other key (including enter) denies, matching the
@@ -274,6 +347,11 @@ export class Tui {
 
     if (this.#mode === "running") {
       if (event.key === "interrupt") this.#interruptHandler?.();
+      return;
+    }
+
+    if (this.#mode === "select" && this.#selection) {
+      this.#handleSelectKey(event);
       return;
     }
 
@@ -301,6 +379,76 @@ export class Tui {
     default:
       this.#schedulePaint();
     }
+  }
+
+  #handleSelectKey(event: KeyEvent): void {
+    const selection = this.#selection;
+    if (!selection) return;
+    const items = this.#filteredSelectionItems(selection);
+    switch (event.key) {
+    case "up":
+      if (items.length > 0) selection.selectedIndex = (selection.selectedIndex - 1 + items.length) % items.length;
+      break;
+    case "down":
+      if (items.length > 0) selection.selectedIndex = (selection.selectedIndex + 1) % items.length;
+      break;
+    case "pageup":
+      selection.selectedIndex = Math.max(0, selection.selectedIndex - SELECT_PAGE_SIZE);
+      break;
+    case "pagedown":
+      selection.selectedIndex = Math.min(Math.max(items.length - 1, 0), selection.selectedIndex + SELECT_PAGE_SIZE);
+      break;
+    case "home":
+      selection.selectedIndex = 0;
+      break;
+    case "end":
+      selection.selectedIndex = Math.max(items.length - 1, 0);
+      break;
+    case "text":
+    case "paste":
+      selection.query += event.text ?? "";
+      selection.selectedIndex = 0;
+      break;
+    case "backspace": {
+      const query = graphemes(selection.query);
+      query.pop();
+      selection.query = query.join("");
+      selection.selectedIndex = 0;
+      break;
+    }
+    case "killToStart":
+    case "killLine":
+      selection.query = "";
+      selection.selectedIndex = 0;
+      break;
+    case "enter":
+      this.#finishSelection(items[selection.selectedIndex]?.value ?? null);
+      return;
+    case "escape":
+    case "interrupt":
+      this.#finishSelection(null);
+      return;
+    default:
+      break;
+    }
+    this.#schedulePaint();
+  }
+
+  #finishSelection(value: string | null): void {
+    const selection = this.#selection;
+    if (!selection) return;
+    this.#selection = undefined;
+    this.#mode = "input";
+    this.#schedulePaint();
+    selection.resolve(value);
+  }
+
+  #filteredSelectionItems(selection: SelectRequest): readonly ReplSelectItem[] {
+    const query = selection.query.trim().toLocaleLowerCase();
+    if (query.length === 0) return selection.items;
+    return selection.items.filter((item) =>
+      `${item.label} ${item.description ?? ""}`.toLocaleLowerCase().includes(query),
+    );
   }
 
   // ---- Rendering ----
@@ -334,6 +482,8 @@ export class Tui {
 
     if (this.#mode === "approval") {
       lines.push(this.#theme.warnText("approve? [y/N]"));
+    } else if (this.#mode === "select" && this.#selection) {
+      lines.push(...this.#selectionLines(this.#selection, width));
     } else if (this.#mode === "running") {
       lines.push(this.#theme.style.dim("ctrl-c to cancel"));
     } else {
@@ -361,6 +511,33 @@ export class Tui {
     } else {
       this.#write(hideCursor());
     }
+  }
+
+  #selectionLines(selection: SelectRequest, width: number): string[] {
+    const items = this.#filteredSelectionItems(selection);
+    const selectedIndex = Math.min(selection.selectedIndex, Math.max(items.length - 1, 0));
+    const maxStart = Math.max(items.length - SELECT_PAGE_SIZE, 0);
+    const start = Math.min(Math.max(selectedIndex - Math.floor(SELECT_PAGE_SIZE / 2), 0), maxStart);
+    const visible = items.slice(start, start + SELECT_PAGE_SIZE);
+    const lines = [this.#theme.style.bold(selection.title)];
+    lines.push(
+      selection.query.length > 0
+        ? `${this.#theme.symbols.prompt} ${selection.query}`
+        : this.#theme.style.dim("Type to filter models"),
+    );
+    if (visible.length === 0) {
+      lines.push(this.#theme.style.dim("  No matching models"));
+    } else {
+      visible.forEach((item, offset) => {
+        const index = start + offset;
+        const marker = index === selectedIndex ? this.#theme.symbols.prompt : " ";
+        const current = item.value === selection.currentValue ? ` ${this.#theme.symbols.check}` : "";
+        const line = sliceByCells(`${marker} ${item.label}${current}`, 0, width);
+        lines.push(index === selectedIndex ? this.#theme.brandText(line) : line);
+      });
+    }
+    lines.push(this.#theme.style.dim("↑/↓ navigate · enter select · esc cancel"));
+    return lines;
   }
 
   #inputLine(width: number): string {

@@ -1,7 +1,12 @@
 export { Agent, type AgentEvent, type AgentOptions, type AgentRunResult } from "./agent";
 export { compactMessages, type CompactionResult } from "./context";
-export { loadConfig, type AgentConfig, type ExaConfig } from "./config";
+export { loadConfig, type AgentConfig, type AgentProvider, type ExaConfig, type ProviderConfig } from "./config";
 export { OpenAICompatibleProvider, type OpenAICompatibleOptions } from "./model/openai-compatible";
+export { createModelProvider, ModelProviderRouter, providerConfig, providerId, PROVIDER_DEFAULTS } from "./model/providers";
+export type { QualifiedModelCatalogEntry } from "./model/providers";
+export { parseThinkTags } from "./tui/activity";
+export { ModelCatalogManager, type ModelCatalogManagerOptions } from "./model/catalog-manager";
+export { ModelCatalogStore, normalizeModelSource } from "./model/catalog-store";
 export type * from "./model/types";
 export { MemoryStore, parseMemoryDocument } from "./memory/store";
 export { rankMemoryDocuments, tokenizeMemoryText, type RankMemoryOptions } from "./memory/retrieval";
@@ -11,8 +16,12 @@ export {
   type ReplAgent,
   type ReplIO,
   type ReplMemoryStore,
+  type ReplModelManager,
   type ReplOptions,
+  type ReplSelectItem,
+  type ReplSelectOptions,
   type ReplSessionStore,
+  resolveModelSelection,
 } from "./repl";
 export { OperationCancelledError, cancellationError, isCancellationError, throwIfAborted } from "./runtime/abort";
 export { RunRecorder } from "./runtime/recorder";

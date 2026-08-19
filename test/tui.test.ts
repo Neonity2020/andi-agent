@@ -5,6 +5,7 @@ class FakeStdin implements TuiStdin {
   readonly #listeners: Array<(chunk: Uint8Array) => void> = [];
   readonly #closeListeners: Array<() => void> = [];
   rawMode: boolean[] = [];
+  paused = false;
 
   on(event: "data" | "close", listener: never): void;
   on(event: "data", listener: (chunk: Uint8Array) => void): void;
@@ -19,6 +20,10 @@ class FakeStdin implements TuiStdin {
   }
 
   resume(): void {}
+
+  pause(): void {
+    this.paused = true;
+  }
 
   send(text: string): void {
     const chunk = new TextEncoder().encode(text);
@@ -138,6 +143,20 @@ describe("Tui", () => {
     tui.handleResult({ output: "final answer", messages: [], runId: "r", usage: null as never });
   });
 
+  test("collapses MiniMax think tags and renders only the answer", () => {
+    const { tui, output } = createHarness();
+    tui.start();
+    tui.beginRun();
+    tui.handleAgentEvent({ type: "turn_started", runId: "r", turn: 1, messageCount: 2 });
+    tui.handleAgentEvent({ type: "model_text_delta", runId: "r", turn: 1, delta: "<think>private reasoning</think>visible answer" });
+    tui.handleAgentEvent({ type: "model_completed", runId: "r", turn: 1, toolCallCount: 0, durationMs: 10 });
+
+    expect(output()).toContain("thinking (collapsed)");
+    expect(output()).toContain("visible answer");
+    expect(output()).not.toContain("private reasoning");
+    expect(output()).not.toContain("<think>");
+  });
+
   test("seals cancelled tools and a cancellation notice", async () => {
     const { tui, stdin, output } = createHarness();
     tui.start();
@@ -165,6 +184,68 @@ describe("Tui", () => {
     });
     expect(output()).toContain("memory · 2 note(s) (truncated)");
     expect(output()).not.toContain("architecture decision body");
+  });
+
+  test("updates the model shown in the status bar", () => {
+    const { tui, output } = createHarness();
+    tui.start();
+
+    tui.setModel("agnes-2.5-pro");
+
+    expect(output()).toContain("agnes-2.5-pro · test · /tmp/ws");
+  });
+
+  test("opens a searchable model picker and selects with the keyboard", async () => {
+    const { tui, stdin, output } = createHarness();
+    tui.start();
+    const pending = tui.select({
+      title: "Select model",
+      selectedValue: "agnes-2.5-flash",
+      items: [
+        { value: "agnes-2.5-flash", label: "agnes-2.5-flash" },
+        { value: "agnes-2.5-pro", label: "agnes-2.5-pro" },
+      ],
+    });
+
+    expect(output()).toContain("Select model");
+    expect(output()).toContain("agnes-2.5-flash ✓");
+    stdin.send("pro");
+    expect(output()).toContain("❯ pro");
+    stdin.send("\r");
+
+    await expect(pending).resolves.toBe("agnes-2.5-pro");
+  });
+
+  test("navigates the model picker with arrow keys", async () => {
+    const { tui, stdin } = createHarness();
+    tui.start();
+    const pending = tui.select({
+      title: "Select model",
+      selectedValue: "agnes-2.5-flash",
+      items: [
+        { value: "agnes-2.5-flash", label: "agnes-2.5-flash" },
+        { value: "agnes-2.5-pro", label: "agnes-2.5-pro" },
+      ],
+    });
+
+    stdin.send("\x1b[B");
+    stdin.send("\r");
+
+    await expect(pending).resolves.toBe("agnes-2.5-pro");
+  });
+
+  test("cancels the model picker with escape", async () => {
+    const { tui, stdin } = createHarness();
+    tui.start();
+    const pending = tui.select({
+      title: "Select model",
+      items: [{ value: "agnes-2.5-flash", label: "agnes-2.5-flash" }],
+    });
+
+    stdin.send("\x1b");
+
+    await Bun.sleep(30);
+    await expect(pending).resolves.toBeNull();
   });
 
   test("routes approval keys with y/N semantics", async () => {
@@ -224,6 +305,37 @@ describe("Tui", () => {
     expect(interrupted).toBe(1);
   });
 
+  test("uses ctrl-d as a global exit even when input contains a draft", async () => {
+    const { tui, stdin } = createHarness();
+    let exits = 0;
+    tui.onExit(() => {
+      exits += 1;
+      tui.close();
+    });
+    tui.start();
+    const pending = tui.read("you> ");
+    stdin.send("unfinished draft");
+
+    stdin.send("\x04");
+
+    expect(exits).toBe(1);
+    await expect(pending).resolves.toBeNull();
+  });
+
+  test("uses ctrl-d as a global exit while a model picker is open", async () => {
+    const { tui, stdin } = createHarness();
+    tui.onExit(() => tui.close());
+    tui.start();
+    const pending = tui.select({
+      title: "Select model",
+      items: [{ value: "agnes-2.5-flash", label: "agnes-2.5-flash" }],
+    });
+
+    stdin.send("\x04");
+
+    await expect(pending).resolves.toBeNull();
+  });
+
   test("close restores the terminal and unblocks pending reads", async () => {
     const { tui, stdin } = createHarness();
     tui.start();
@@ -232,6 +344,7 @@ describe("Tui", () => {
     tui.close();
     await expect(pending).resolves.toBeNull();
     expect(stdin.rawMode.at(-1)).toBe(false);
+    expect(stdin.paused).toBeTrue();
   });
 
   test("ends the session when stdin closes", async () => {

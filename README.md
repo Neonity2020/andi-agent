@@ -21,6 +21,19 @@ Bun 会自动加载 `.env`。默认调用 Agnes OpenAI-compatible Chat Completio
 
 如需切换其他兼容服务，可覆盖 `AGENT_BASE_URL` 和 `AGENT_MODEL`。`AGENT_API_KEY` 仍作为通用 API Key 变量兼容保留，但 Agnes 测试建议使用 `AGNES_API_KEY`。
 
+### MiniMax 国内版
+
+MiniMax 国内版使用官方 OpenAI 兼容接口。将 `.env` 配置为：
+
+```text
+AGNES_API_KEY=your-agnes-key
+MINIMAX_API_KEY=your-minimax-key
+MINIMAX_MODEL=MiniMax-M2.7
+MINIMAX_BASE_URL=https://api.minimaxi.com/v1
+```
+
+Agnes 仍是默认 Provider；MiniMax 配置好后，在 REPL 中执行 `/provider minimax` 切换，执行 `/provider agnes` 切回。切换后使用 `/models` 选择该 Provider 的模型；模型目录会独立缓存到当前 workspace 的 `.andi-agent/models.json`，不会混用。
+
 ### Exa Web Search
 
 在 `.env` 中设置 `EXA_API_KEY` 后，普通对话 Agent 和定时任务 Agent 会获得 `web_search` 工具：
@@ -46,7 +59,8 @@ bun run test:exa
 bun link
 cd ~/任意项目
 andi                      # 在当前 workspace 启动 TUI 交互会话
-andi --session real-dev   # 带持久 session 启动
+andi                      # 使用 default session，自动保存并恢复对话
+andi --session real-dev   # 使用指定的持久 session 启动
 andi --plain              # 使用经典 readline 界面
 andi schedule list        # 管理当前 workspace 的定时任务
 andi "修复失败的测试"      # 单次任务模式
@@ -99,16 +113,24 @@ bun run start -- --repl --session real-dev --approval ask
 bun run start -- --repl --session real-dev "分析项目并提出下一步计划"
 ```
 
-REPL 会复用同一个 Agent、工具和审批终端。消息、模型回复和工具结果都会写入检查点；单轮 API、工具错误或用户取消不会退出。运行中按一次 Ctrl-C 会取消当前轮并返回提示符，空闲时按 Ctrl-C 则退出。内置命令：
+REPL 会复用同一个 Agent、工具和审批终端。消息、模型回复和工具结果都会写入检查点；单轮 API、工具错误或用户取消不会退出。运行中按一次 Ctrl-C 会取消当前轮并返回提示符，空闲时按 Ctrl-C 则退出。`Ctrl-D` 是全局直接退出键，在输入、模型选择、审批或运行状态下都会退出；运行中的请求会先被取消。内置命令：
 
 - `/help`：显示帮助；
-- `/status`：显示 session 和消息数量；
+- `/status`：显示 session、当前模型和消息数量；
 - `/usage`：显示最近一轮及当前 session 的 token 和模型耗时；
+- `/models`：从本地模型目录打开 TUI 下拉菜单并搜索、切换；
+- `/models refresh`：从当前 Provider 强制刷新模型目录；
 - `/recover`：补齐中断留下的缺失 tool result；
 - `/clear`：清空内存及持久化历史；
 - `/exit` 或 `/quit`：退出。
 
-不指定 `--session` 时仍可在当前进程内多轮交流，但退出后不会保存历史。
+不指定 `--session` 时，REPL 默认使用当前工作区的 `default` session，退出时保存并在下次运行 `andi` 时恢复。使用 `--session <id>` 可以为不同任务维护独立会话；`/clear` 会清空当前 session。
+
+模型选择器支持直接输入过滤、方向键或 Page Up/Page Down 导航、Enter 确认、Esc 取消。classic plain REPL 会降级为编号/完整 ID 输入。
+
+模型目录保存在 `.andi-agent/models.json`。第一次没有缓存时，`/models` 会向当前 Provider 获取并保存列表；之后直接读取内存或磁盘，不再重复发送网络请求。接入新模型后可用 `/models refresh` 更新当前 Provider，同时保留文件中其他 Provider 的目录。该版本化文件不保存 API Key，并与 session 等运行状态一起被 Git 忽略。
+
+模型切换只影响当前进程中的后续请求，不会修改 `.env` 或已保存的 session；重新启动后仍使用 `AGENT_MODEL`。图像、视频、embedding 等非 Chat Completions 模型不会出现在可选列表中。
 
 ### 会话
 

@@ -118,4 +118,124 @@ describe("OpenAICompatibleProvider", () => {
     await Bun.sleep(0);
     expect(readerCancelled).toBeTrue();
   });
+
+  test("lists selectable chat models and switches subsequent completions", async () => {
+    const requests: Array<{ url: string; init?: RequestInit }> = [];
+    const fetcher = (async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      requests.push({ url, ...(init ? { init } : {}) });
+      if (url.endsWith("/models")) {
+        return Response.json({
+          data: [
+            { id: "agnes-2.5-flash", owned_by: "agnes" },
+            { id: "agnes-image-2.1-flash", owned_by: "agnes" },
+            { id: "agnes-video-v2.0", owned_by: "agnes" },
+            { id: "agnes-2.5-pro" },
+            { id: "agnes-2.5-pro" },
+            { id: 42 },
+          ],
+        });
+      }
+      return Response.json({ choices: [{ message: { content: "ok" } }] });
+    }) as typeof fetch;
+    const provider = new OpenAICompatibleProvider({
+      apiKey: "agnes-test-key",
+      model: "agnes-2.5-flash",
+      baseUrl: "https://example.test/v1/",
+      fetcher,
+    });
+
+    const models = await provider.listModels();
+    provider.selectModel("agnes-2.5-pro");
+    await provider.complete([{ role: "user", content: "hello" }], []);
+
+    expect(models).toEqual([
+      { id: "agnes-2.5-flash", ownedBy: "agnes" },
+      { id: "agnes-2.5-pro" },
+    ]);
+    expect(provider.currentModel).toBe("agnes-2.5-pro");
+    expect(requests[0]?.url).toBe("https://example.test/v1/models");
+    expect(new Headers(requests[0]?.init?.headers).get("authorization")).toBe("Bearer agnes-test-key");
+    expect(JSON.parse(String(requests[1]?.init?.body)).model).toBe("agnes-2.5-pro");
+  });
+
+  test("only selects models returned by the latest catalog", async () => {
+    const provider = new OpenAICompatibleProvider({
+      apiKey: "test-key",
+      model: "agnes-2.5-flash",
+      fetcher: (async () => Response.json({ data: [{ id: "agnes-2.5-pro" }] })) as unknown as typeof fetch,
+    });
+
+    expect(() => provider.selectModel("agnes-2.5-pro")).toThrow("List models before selecting one");
+    await provider.listModels();
+    expect(() => provider.selectModel("unknown-model")).toThrow("not in the current selectable model list");
+    expect(provider.currentModel).toBe("agnes-2.5-flash");
+  });
+
+  test("rejects malformed or non-chat-only model catalogs", async () => {
+    const malformed = new OpenAICompatibleProvider({
+      apiKey: "test-key",
+      model: "agnes-2.5-flash",
+      fetcher: (async () => Response.json({ models: [] })) as unknown as typeof fetch,
+    });
+    const nonChat = new OpenAICompatibleProvider({
+      apiKey: "test-key",
+      model: "agnes-2.5-flash",
+      fetcher: (async () => Response.json({ data: [{ id: "agnes-image-2.0-flash" }] })) as unknown as typeof fetch,
+    });
+
+    await expect(malformed.listModels()).rejects.toThrow("invalid response");
+    await expect(nonChat.listModels()).rejects.toThrow("did not contain any Chat Completions models");
+  });
+
+  test("times out model listing and redacts credentials from failures", async () => {
+    const hangingFetcher = ((_input: string | URL | Request, init?: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener(
+          "abort",
+          () => reject(new DOMException("aborted", "AbortError")),
+          { once: true },
+        );
+      })) as typeof fetch;
+    const timed = new OpenAICompatibleProvider({
+      apiKey: "top-secret-key",
+      model: "agnes-2.5-flash",
+      fetcher: hangingFetcher,
+      modelListTimeoutMs: 5,
+    });
+    const failed = new OpenAICompatibleProvider({
+      apiKey: "top-secret-key",
+      model: "agnes-2.5-flash",
+      fetcher: (async () => {
+        throw new Error("upstream exposed top-secret-key");
+      }) as unknown as typeof fetch,
+    });
+
+    await expect(timed.listModels()).rejects.toThrow("timed out after 5ms");
+    const failure = failed.listModels().catch((error: unknown) => error);
+    expect(String(await failure)).toContain("[REDACTED]");
+    expect(String(await failure)).not.toContain("top-secret-key");
+  });
+
+  test("propagates caller cancellation while listing models", async () => {
+    const fetcher = ((_input: string | URL | Request, init?: RequestInit) =>
+      new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener(
+          "abort",
+          () => reject(new DOMException("aborted", "AbortError")),
+          { once: true },
+        );
+      })) as typeof fetch;
+    const provider = new OpenAICompatibleProvider({
+      apiKey: "test-key",
+      model: "agnes-2.5-flash",
+      fetcher,
+    });
+    const controller = new AbortController();
+    const listing = provider.listModels(controller.signal);
+
+    controller.abort(new Error("stop listing"));
+
+    await expect(listing).rejects.toThrow("stop listing");
+  });
 });

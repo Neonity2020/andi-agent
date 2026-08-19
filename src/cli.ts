@@ -3,7 +3,9 @@ import { createInterface, type Interface as ReadlineInterface } from "node:readl
 import { basename } from "node:path";
 import { Agent, type AgentEvent } from "./agent";
 import { loadConfig, type AgentConfig } from "./config";
-import { OpenAICompatibleProvider } from "./model/openai-compatible";
+import { createModelProvider, ModelProviderRouter, providerConfig } from "./model/providers";
+import { ModelCatalogManager } from "./model/catalog-manager";
+import { ModelCatalogStore } from "./model/catalog-store";
 import { runRepl, type ReplIO } from "./repl";
 import { SessionStore } from "./session";
 import { createCommandTool, type CommandApprover } from "./tools/command";
@@ -14,6 +16,7 @@ import { createSearchTool } from "./tools/search";
 import { Workspace, createWorkspaceTools } from "./tools/workspace";
 import { createSchedulerTools } from "./tools/scheduler";
 import { createWebSearchTool } from "./tools/web-search";
+import { createWeatherTool } from "./tools/weather";
 import { isCancellationError, throwIfAborted } from "./runtime/abort";
 import { applyInstallEnv } from "./runtime/env";
 import { addRunUsage, emptyRunUsage } from "./usage";
@@ -41,7 +44,7 @@ Usage:
 
 Options:
   --cwd PATH          Workspace root (default: current directory)
-  --session ID        Load and save a local conversation session
+  --session ID        Load and save a local conversation session (REPL default: default)
   --approval MODE     Command approval mode: ask (default) or never
   --repl              Start a persistent interactive session (TUI by default)
   --plain             Use the classic readline REPL instead of the TUI
@@ -49,15 +52,18 @@ Options:
   -h, --help          Show this help
 
 Environment:
-  AGNES_API_KEY     Agnes API key (required; AGENT_API_KEY is also accepted)
-  AGENT_MODEL       Model name (default: agnes-2.5-flash)
-  AGENT_BASE_URL    API base URL (default: https://apihub.agnes-ai.com/v1)
+  AGENT_PROVIDER    Model provider: agnes (default) or minimax
+  AGNES_API_KEY     Agnes API key (required for Agnes; AGENT_API_KEY is also accepted)
+  MINIMAX_API_KEY   MiniMax domestic API key (required for MiniMax)
+  AGENT_MODEL       Model name (default depends on provider)
+  AGENT_BASE_URL    API base URL (default depends on provider)
   AGENT_MAX_TURNS   Maximum model turns (default: 12)
   AGENT_MAX_CONTEXT_CHARS  Approximate context budget (default: 120000)
   EXA_API_KEY       Optional Exa key that enables the web_search tool
   EXA_BASE_URL      Exa API base URL (default: https://api.exa.ai)`;
 
 const SCHEDULE_EVENT_TYPES = new Set(["turn_started", "tool_started", "tool_completed", "agent_completed"]);
+const DEFAULT_REPL_SESSION_ID = "default";
 
 interface CliArguments {
   cwd: string;
@@ -134,6 +140,7 @@ class TerminalChannel implements Questioner {
 
   close(): void {
     if (!this.#closed) this.#terminal.close();
+    process.stdin.pause();
   }
 }
 
@@ -179,6 +186,10 @@ export function parseArguments(args: readonly string[]): CliArguments {
   const task = taskParts.join(" ").trim() || undefined;
   if (!repl && !task) throw new Error("A task is required unless --repl is used");
   return { cwd, task, session, approval, repl, plain, logEvents };
+}
+
+export function resolveSessionId(options: Pick<CliArguments, "repl" | "session">): string | undefined {
+  return options.session ?? (options.repl ? DEFAULT_REPL_SESSION_ID : undefined);
 }
 
 function createTerminalApprover(
@@ -404,6 +415,7 @@ export function createAgentToolRegistry(
     ...createSchedulerTools(scheduleStore, { runner: conversationalScheduledRunner }),
     ...createMemoryTools(memory),
     ...(config.exa ? [createWebSearchTool(config.exa)] : []),
+    createWeatherTool(),
   ]);
 }
 
@@ -425,6 +437,7 @@ export async function main(args = Bun.argv.slice(2)): Promise<void> {
   }
 
   const cli = parseArguments(args);
+  const sessionId = resolveSessionId(cli);
   if (cli.repl && !process.stdin.isTTY) throw new Error("--repl requires an interactive TTY");
   const config = loadConfig();
   const workspace = await Workspace.create(cli.cwd);
@@ -440,8 +453,8 @@ export async function main(args = Bun.argv.slice(2)): Promise<void> {
       sink: process.stdout,
       columns: () => process.stdout.columns || 80,
       status: {
-        model: config.model,
-        session: cli.session ?? "memory-only",
+        model: `${config.provider ?? "agnes"}/${config.model}`,
+        session: sessionId ?? "memory-only",
         cwd: basename(workspace.root),
       },
       colorEnabled: !process.env.NO_COLOR,
@@ -449,7 +462,24 @@ export async function main(args = Bun.argv.slice(2)): Promise<void> {
     approver = cli.approval === "ask" ? tui.approve : undefined;
   }
   const tools = createAgentToolRegistry(workspace, config, approver, memory);
-  const model = new OpenAICompatibleProvider(config);
+  const configuredProviders = Object.keys(config.providers ?? {}) as Array<"agnes" | "minimax">;
+  const providerInstances = new Map<"agnes" | "minimax", ReturnType<typeof createModelProvider>>();
+  const catalogManagers = new Map<"agnes" | "minimax", ModelCatalogManager>();
+  for (const provider of configuredProviders) {
+    const settings = providerConfig(config, provider);
+    if (!settings) continue;
+    const instance = createModelProvider({ ...settings, provider });
+    providerInstances.set(provider, instance);
+    catalogManagers.set(provider, new ModelCatalogManager({
+      providerId: provider,
+      source: settings.baseUrl,
+      provider: instance,
+      store: new ModelCatalogStore(workspace),
+    }));
+  }
+  const initialProvider = config.provider ?? "agnes";
+  const model = new ModelProviderRouter({ providers: providerInstances, catalogs: catalogManagers, initialProvider });
+  const models = model;
   const reporter = createEventReporter();
   const recorder = cli.logEvents ? new RunRecorder(workspace) : undefined;
   const agent = new Agent({
@@ -465,8 +495,8 @@ export async function main(args = Bun.argv.slice(2)): Promise<void> {
     },
   });
 
-  const sessions = cli.session ? new SessionStore(workspace) : undefined;
-  const sessionSnapshot = cli.session ? await sessions?.loadSnapshot(cli.session) : undefined;
+  const sessions = sessionId ? new SessionStore(workspace) : undefined;
+  const sessionSnapshot = sessionId ? await sessions?.loadSnapshot(sessionId) : undefined;
   const history = sessionSnapshot?.messages ?? [];
   if (cli.repl && tui) {
     tui.start();
@@ -475,10 +505,12 @@ export async function main(args = Bun.argv.slice(2)): Promise<void> {
         agent,
         io: tui,
         memory,
+        models,
+        onModelChanged: (selected) => tui.setModel(`${model.currentProvider}/${selected}`),
         initialHistory: history,
         initialUsage: sessionSnapshot?.usage ?? emptyRunUsage(),
         ...(cli.task ? { initialTask: cli.task } : {}),
-        ...(cli.session ? { sessionId: cli.session } : {}),
+        ...(sessionId ? { sessionId } : {}),
         ...(sessions ? { sessionStore: sessions } : {}),
         beforeTask: () => tui.beginRun(),
         onResult: (result) => tui.handleResult(result),
@@ -511,10 +543,11 @@ export async function main(args = Bun.argv.slice(2)): Promise<void> {
         agent,
         io,
         memory,
+        models,
         initialHistory: history,
         initialUsage: sessionSnapshot?.usage ?? emptyRunUsage(),
         ...(cli.task ? { initialTask: cli.task } : {}),
-        ...(cli.session ? { sessionId: cli.session } : {}),
+        ...(sessionId ? { sessionId } : {}),
         ...(sessions ? { sessionStore: sessions } : {}),
         beforeTask: reporter.reset,
         onError: reporter.finish,
@@ -534,10 +567,10 @@ export async function main(args = Bun.argv.slice(2)): Promise<void> {
   const baseUsage = sessionSnapshot?.usage ?? emptyRunUsage();
   try {
     result = await agent.runWithHistory(cli.task as string, history, {
-      ...(cli.session && sessions
+      ...(sessionId && sessions
         ? {
             onCheckpoint: (checkpoint) =>
-              sessions.saveCheckpoint(cli.session as string, checkpoint, addRunUsage(baseUsage, checkpoint.usage)),
+              sessions.saveCheckpoint(sessionId, checkpoint, addRunUsage(baseUsage, checkpoint.usage)),
           }
         : {}),
     });

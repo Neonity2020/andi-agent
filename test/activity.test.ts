@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   ActivityState,
   formatDuration,
+  parseThinkTags,
   renderCancelledTool,
   renderSealedTool,
   renderUserEcho,
@@ -47,6 +48,21 @@ describe("renderSealedTool", () => {
   });
 });
 
+describe("parseThinkTags", () => {
+  test("separates MiniMax thinking from answer text, including an open tag", () => {
+    expect(parseThinkTags("<think>先分析\n一下</think>答案")).toEqual({
+      content: "答案",
+      thinking: "先分析\n一下",
+      thinkingOpen: false,
+    });
+    expect(parseThinkTags("<think>仍在思考")).toEqual({
+      content: "",
+      thinking: "仍在思考",
+      thinkingOpen: true,
+    });
+  });
+});
+
 describe("ActivityState", () => {
   test("shows thinking, then a streaming preview, then idle", () => {
     const state = new ActivityState();
@@ -80,5 +96,14 @@ describe("ActivityState", () => {
     expect(ended).toMatchObject({ id: "t1", name: "read_file" });
     expect(state.render(1000, 40, theme)).toEqual([`${SPINNER_FRAMES[0]} search_code · 950ms`]);
     expect(state.toolEnded("missing")).toBeUndefined();
+  });
+
+  test("keeps think-tag content collapsed while streaming", () => {
+    const state = new ActivityState();
+    state.beginTurn(0);
+    state.appendDelta("<think>内部推理</think>最终答案");
+
+    expect(state.takeStream()).toBe("最终答案");
+    expect(state.takeThinking()).toEqual({ text: "内部推理", open: false });
   });
 });

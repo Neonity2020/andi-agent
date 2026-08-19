@@ -92,6 +92,13 @@ export class InputDecoder {
     return events;
   }
 
+  flushEscape(): KeyEvent | undefined {
+    if (this.#buffer.length === 1 && this.#buffer[0] === 0x1b) {
+      return this.#consume(1, { key: "escape" });
+    }
+    return undefined;
+  }
+
   #decodeNext(): KeyEvent | undefined {
     if (this.#buffer.length === 0) return undefined;
 

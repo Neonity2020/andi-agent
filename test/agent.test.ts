@@ -84,6 +84,45 @@ describe("Agent", () => {
     expect(eventTypes).toEqual(["turn_started", "model_completed", "agent_completed"]);
   });
 
+  test("injects the current provider and model identity on every run", async () => {
+    let identity = { provider: "agnes", model: "agnes-2.5-flash" };
+    const requests: Message[][] = [];
+    const model: ModelProvider = {
+      getModelIdentity: () => identity,
+      async complete(messages) {
+        requests.push([...messages]);
+        return { content: "ok", toolCalls: [] };
+      },
+    };
+    const agent = new Agent({ model, tools: new ToolRegistry() });
+
+    await agent.run("continue the task");
+    identity = { provider: "minimax", model: "MiniMax-M2.7" };
+    await agent.run("continue the task now");
+
+    expect(requests[0]?.[0]?.content).toContain("Provider: agnes");
+    expect(requests[0]?.[0]?.content).toContain("Model: agnes-2.5-flash");
+    expect(requests[1]?.[0]?.content).toContain("Provider: minimax");
+    expect(requests[1]?.[0]?.content).toContain("Model: MiniMax-M2.7");
+    expect(requests[1]?.[0]?.content).not.toContain("currently running on:");
+  });
+
+  test("answers explicit model identity questions from runtime state", async () => {
+    let calls = 0;
+    const model: ModelProvider = {
+      getModelIdentity: () => ({ provider: "minimax", model: "MiniMax-M2.7" }),
+      async complete() {
+        calls += 1;
+        return { content: "wrong model", toolCalls: [] };
+      },
+    };
+
+    const result = await new Agent({ model, tools: new ToolRegistry() }).runWithHistory("你现在使用的是哪款模型？");
+
+    expect(result.output).toBe("当前使用的模型是 MiniMax-M2.7（Provider: minimax）。");
+    expect(calls).toBe(0);
+  });
+
   test("emits a compaction event when old turns exceed the budget", async () => {
     const model = new ScriptedModel([{ content: "done", toolCalls: [] }]);
     const eventTypes: string[] = [];
