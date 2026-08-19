@@ -49,6 +49,19 @@ EXA_BASE_URL=https://api.exa.ai
 
 Agent 默认提供 `weather` 工具，通过 Open-Meteo 查询城市当前天气和未来三天预报，不需要额外 API Key。调用时传入中文或英文城市名，例如 `{"city":"北京"}`。
 
+### Skills（Claude Code / Codex 兼容）
+
+andi-agent 支持 Agent Skills 开放格式：每个技能是一个目录中的 `SKILL.md`，文件以 YAML frontmatter 开始，至少包含 `name` 和 `description`，正文写工作流或领域约定。例如：
+
+```text
+.agents/skills/code-review/SKILL.md
+.claude/skills/code-review/SKILL.md
+```
+
+项目级技能会从 `.agents/skills/`、`.claude/skills/` 和旧版 `.codex/skills/` 发现；用户级技能会从 `~/.agents/skills/`、`~/.claude/skills/`、`$CODEX_HOME/skills/` 和 `~/.codex/skills/` 发现。相同名称时项目技能优先。`/skills` 列出技能，`/skill-name [args]` 或 `/skill skill-name [args]` 显式调用；普通任务会根据 `description`、`when_to_use` 和技能名自动加载相关技能正文。
+
+兼容 Claude Code 的 `$ARGUMENTS`、`${CLAUDE_SKILL_DIR}`、`disable-model-invocation`、`user-invocable`、`context`、`allowed-tools` 和 ``!`command` `` 动态上下文语法。动态命令通过 andi-agent 现有的命令审批策略执行；没有可用审批器时不会绕过安全限制。
+
 配置 Key 后可手动执行一次真实 API 冒烟测试：
 
 ```bash
@@ -90,7 +103,7 @@ bun test
 
 ### TUI 交互界面
 
-在 TTY 环境下，`--repl`（包括零参数 `andi`）默认启动内联式 TUI：完成的用户输入、助手回复（轻量 Markdown 渲染）和工具结果（`✓ 工具 · 耗时`）会输出到终端原生 scrollback，屏幕底部只保留一个实时区域，显示 spinner、运行中的工具、流式输出预览、输入行（`❯`）和状态栏（模型 · session · 工作区）。
+在 TTY 环境下，`--repl`（包括零参数 `andi`）默认启动内联式 TUI：完成的用户输入、助手回复（轻量 Markdown 渲染，支持标题、列表、代码块和表格）和工具结果（`✓ 工具 · 耗时`）会输出到终端原生 scrollback，屏幕底部只保留一个实时区域，显示 spinner、运行中的工具、流式输出预览、输入行（`❯`）和状态栏（模型 · session · 工作区）。
 
 命令审批会在 scrollback 中显示待批准命令，底部以 `approve? [y/N]` 提示：按 `y` 批准，其他任意键拒绝。运行中按 Ctrl-C 取消当前轮，空闲时按 Ctrl-C 退出；输入流关闭（Ctrl-D）也会退出。
 

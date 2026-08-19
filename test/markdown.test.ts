@@ -35,6 +35,42 @@ describe("renderMarkdown", () => {
     expect(output).toEqual(["1. one", "2. two"]);
   });
 
+  test("renders aligned Markdown tables with a header separator", () => {
+    expect(
+      renderMarkdown("| Name | Age |\n| :--- | ---: |\n| Alice | 30 |\n| 北京 | 100 |", 30, theme),
+    ).toEqual([
+      "┌───────┬─────┐",
+      "│ Name  │ Age │",
+      "├───────┼─────┤",
+      "│ Alice │  30 │",
+      "│ 北京  │ 100 │",
+      "└───────┴─────┘",
+    ]);
+  });
+
+  test("wraps long table cells without exceeding the terminal width", () => {
+    const output = renderMarkdown(
+      "| Item | Description |\n| --- | --- |\n| A | one two three four five |",
+      20,
+      theme,
+    );
+    expect(output).toEqual([
+      "┌──────┬───────────┐",
+      "│ Item │ Descripti │",
+      "│      │ on        │",
+      "├──────┼───────────┤",
+      "│ A    │ one two   │",
+      "│      │ three     │",
+      "│      │ four five │",
+      "└──────┴───────────┘",
+    ]);
+    expect(output.every((line) => Bun.stringWidth(line) <= 20)).toBe(true);
+  });
+
+  test("keeps escaped pipes inside table cells", () => {
+    expect(renderMarkdown("| Key | Value |\n| --- | --- |\n| a\\|b | `x` |", 30, theme)).toContain("│ a|b │ x     │");
+  });
+
   test("applies inline bold and code styling per line", () => {
     const styled = createTheme(true);
     const output = renderMarkdown("use **bold** and `code` here", 40, styled);

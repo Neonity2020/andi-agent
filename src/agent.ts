@@ -6,6 +6,7 @@ import { randomUUID } from "node:crypto";
 import { cancellationError, isCancellationError, throwIfAborted } from "./runtime/abort";
 import { addTokenUsage, emptyRunUsage } from "./usage";
 import type { MemoryProvider } from "./memory/types";
+import type { SkillManager } from "./skills/manager";
 
 export type AgentEvent =
   | { type: "turn_started"; runId: string; turn: number; messageCount: number }
@@ -48,6 +49,7 @@ export interface AgentOptions {
   modelName?: string;
   kbPath?: string;
   memory?: MemoryProvider;
+  skills?: SkillManager;
   maxTurns?: number;
   maxContextChars?: number;
   onEvent?: (event: AgentEvent) => void | Promise<void>;
@@ -75,6 +77,7 @@ export class Agent {
   readonly #tools: ToolRegistry;
   readonly #systemPrompt: string;
   readonly #memory: MemoryProvider | undefined;
+  readonly #skills: SkillManager | undefined;
   readonly #maxTurns: number;
   readonly #maxContextChars: number;
   readonly #onEvent: ((event: AgentEvent) => void | Promise<void>) | undefined;
@@ -82,8 +85,11 @@ export class Agent {
   constructor(options: AgentOptions) {
     this.#model = options.model;
     this.#tools = options.tools;
-    this.#systemPrompt = options.systemPrompt ?? defaultSystemPrompt(options.kbPath ?? "kb", options.modelName);
+    const baseSystemPrompt = options.systemPrompt ?? defaultSystemPrompt(options.kbPath ?? "kb", options.modelName);
+    const skillCatalog = options.skills?.catalogPrompt();
+    this.#systemPrompt = skillCatalog ? `${baseSystemPrompt}\n\n${skillCatalog}` : baseSystemPrompt;
     this.#memory = options.memory;
+    this.#skills = options.skills;
     this.#maxTurns = options.maxTurns ?? 12;
     this.#maxContextChars = options.maxContextChars ?? 120_000;
     this.#onEvent = options.onEvent;
@@ -116,6 +122,7 @@ export class Agent {
     messages.push({ role: "user", content: task });
     const definitions = this.#tools.definitions();
     let memoryContext = "";
+    const skillContext = this.#skills ? await this.#skills.contextForTask(task) : "";
 
     const checkpoint = async (state: AgentCheckpointState): Promise<void> => {
       if (!options.onCheckpoint) return;
@@ -184,7 +191,7 @@ export class Agent {
 
         await this.#emit({ type: "turn_started", runId, turn, messageCount: messages.length });
         const modelStartedAt = performance.now();
-        const response = await this.#model.complete(withMemoryContext(messages, memoryContext), definitions, {
+        const response = await this.#model.complete(withRunContext(messages, memoryContext, skillContext), definitions, {
           onTextDelta: (delta) => this.#emit({ type: "model_text_delta", runId, turn, delta }),
           ...(options.signal ? { signal: options.signal } : {}),
         });
@@ -297,6 +304,21 @@ function withMemoryContext(messages: readonly Message[], memoryContext: string):
     {
       role: "user",
       content: `${memoryContext}\n\nCURRENT USER REQUEST (higher priority than memory):\n${current.content}`,
+    },
+  ];
+}
+
+function withRunContext(messages: readonly Message[], memoryContext: string, skillContext: string): Message[] {
+  const withMemory = withMemoryContext(messages, memoryContext);
+  if (skillContext.length === 0) return withMemory;
+  const current = withMemory.at(-1);
+  if (current?.role !== "user") return withMemory;
+  const content = typeof current.content === "string" ? current.content : "";
+  return [
+    ...withMemory.slice(0, -1),
+    {
+      role: "user",
+      content: `${skillContext}\n\nCURRENT USER REQUEST (higher priority than skill instructions):\n${content}`,
     },
   ];
 }

@@ -15,11 +15,13 @@ import { addRunUsage } from "../usage";
 import type { ScheduledTaskRunner } from "./types";
 import { MemoryStore } from "../memory/store";
 import { createMemoryTools } from "../tools/memory";
+import type { SkillManager } from "../skills/manager";
 
 export interface ScheduledAgentRunnerOptions {
   workspace: Workspace;
   config: AgentConfig;
   model?: ModelProvider;
+  skills?: SkillManager;
   onEvent?: (taskId: string, event: AgentEvent) => void | Promise<void>;
   onResult?: (taskId: string, output: string) => void;
 }
@@ -46,6 +48,7 @@ export function createScheduledAgentRunner(options: ScheduledAgentRunnerOptions)
       model,
       tools,
       memory,
+      ...(options.skills ? { skills: options.skills } : {}),
       maxTurns: options.config.maxTurns,
       maxContextChars: options.config.maxContextChars,
       async onEvent(event) {

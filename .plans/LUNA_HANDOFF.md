@@ -3,10 +3,10 @@
 ## 当前状态
 
 - 仓库：`/Users/andi/Documents/ChatGPT/andi-agent`
-- 分支：`main`
-- HEAD：`0fce852 feat: add reliable long-term memory`
-- 本轮模型切换、默认 session、模型目录缓存和 Ctrl-D 改动均尚未提交。
-- 最近完整验证：`bun test` 208 pass / 0 fail；`bun run typecheck` 与 `git diff --check` 通过。
+- 分支：`codex/minimax-provider-fixes`
+- 本轮已包含 MiniMax、多 Provider/模型切换、动态模型身份、MiniMax think 折叠、天气工具、SKILL 机制和 TUI Markdown 表格渲染。
+- 本次 handoff 更新准备随当前功能一起提交并推送。
+- 最近完整验证：`bun test` 221 pass / 0 fail；`bun run typecheck` 与 `git diff --check` 通过。
 
 ## 已完成但未提交的功能
 
@@ -83,6 +83,20 @@
 - 工具返回当前温度、体感、天气状况、湿度、风速及未来三天预报；城市输入限制为 1–200 个字符。
 - 通过可注入的 fetcher 测试 API 请求、时区传递、输入校验和取消行为。
 
+### Skills 机制
+
+- `SkillManager` 实现 Agent Skills `SKILL.md` 的发现、YAML frontmatter 解析、元数据预加载、按任务自动匹配和显式 `/skill-name` 调用。
+- 兼容项目/用户级 `.agents/skills`、`.claude/skills`，并兼容旧 `.codex/skills`；同名技能按项目优先，避免用户配置覆盖仓库约定。
+- 支持 Claude 常用字段与模板：`$ARGUMENTS`、`${CLAUDE_SKILL_DIR}`、`disable-model-invocation`、`user-invocable`、`context`、`allowed-tools` 和 ``!`command` `` 动态上下文。
+- 动态上下文命令复用现有命令审批边界；无审批器时拒绝执行，不允许技能绕过 `run_command` 的安全策略。
+- Agent system prompt 只预加载技能名称/描述，正文按需加载；REPL 增加 `/skills` 和 `/skill-name [args]`。
+
+### TUI Markdown 表格
+
+- `renderMarkdown()` 现在识别标准 Markdown 表格，渲染 Unicode 边框、加粗表头以及左/中/右对齐。
+- 表格列按终端 cell 宽度计算，支持 CJK、转义管道符和长单元格换行，不会超过 TUI 可用宽度。
+- 表格渲染覆盖最终 TUI 回复输出，不改变流式文本、代码块和普通 Markdown 行为。
+
 ## 关键文件
 
 - `.plans/011-model-switching.md`：模型切换与 TUI picker 方案。
@@ -96,14 +110,19 @@
 - `src/tui/tui.ts`：交互选择器和全局按键处理。
 - `src/tui/input.ts`：Esc 延迟解析。
 - `src/tui/activity.ts`：流式状态与 MiniMax think 标签解析/折叠摘要。
+- `src/tui/markdown.ts`：终端宽度感知的轻量 Markdown 渲染，包含表格边框、对齐和单元格换行。
+- `test/markdown.test.ts`：Markdown 表格、宽字符和长单元格回归测试。
 - `src/tools/weather.ts`：Open-Meteo 天气查询工具。
 - `test/weather.test.ts`：天气工具请求、格式化、校验和取消回归测试。
+- `src/skills/manager.ts`：跨 Claude Code/Codex 的 SKILL.md 发现、解析和注入。
+- `test/skills.test.ts`：技能发现、优先级、自动匹配、显式调用和动态上下文测试。
+- `.agents/skills/skill-creator/SKILL.md`：用于创建和维护可跨 Claude Code/Codex 复用的项目 Skill。
 - `test/model-catalog.test.ts`：目录 Store/Manager 测试。
 - `test/config.test.ts`、`test/repl.test.ts`、`test/tui.test.ts`、`test/agent.test.ts`：Provider 配置/切换、Ctrl-D 与当前模型身份回归测试。
 
 ## 工作区注意事项
 
-- 本轮功能改动应整体保留，尚未 commit。
+- 本轮功能改动应整体保留；提交时只纳入明确属于功能的文件。
 - `.zcode/`、`non-ai/`、`pnpm-lock.yaml`、`pnpm-workspace.yaml` 是无关未跟踪内容，不要加入提交或删除。
 - `.andi-agent/` 是敏感运行状态并已忽略；`.memory/` 是长期记忆 Markdown 目录。
 - `docs/` 用于测试 Agent 生成能力。
@@ -123,4 +142,4 @@ git diff --check
 2. 执行 `git status --short`，确认无关未跟踪文件仍未被纳入。
 3. Provider Registry/运行时路由已落地；后续增加 Provider 时复用 `AgentProvider`、`ProviderConfig`、`ModelProviderRouter` 和 `ModelCatalogManager`，不要把 Provider 分支堆回 CLI 或 `OpenAICompatibleProvider`。
 4. 若当前阶段只需收尾，做一次真实交互冒烟：Agnes 默认启动、配置 MiniMax 后 `/provider minimax`、`/models refresh`、下一轮使用 MiniMax、`/provider agnes` 切回、Ctrl-D 一次退出。
-5. 用户未要求提交；不要自动 commit 或 push。
+5. 已完成本轮提交并推送后，后续改动继续保持显式文件 staging，避免纳入工作区中的无关用户文件。

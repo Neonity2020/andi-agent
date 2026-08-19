@@ -6,6 +6,7 @@ import { repairIncompleteToolCalls } from "./session";
 import { addRunUsage, emptyRunUsage } from "./usage";
 import type { MemoryDocument, MemoryMatch, MemorySummary } from "./memory/types";
 import type { AgentProvider } from "./config";
+import type { SkillInvocation, SkillSummary } from "./skills/manager";
 
 export interface ReplAgent {
   runWithHistory(
@@ -60,6 +61,12 @@ export interface ReplModelManager {
   selectModel(id: string): void | Promise<void>;
 }
 
+export interface ReplSkillManager {
+  list(): readonly SkillSummary[];
+  parseInvocation(input: string): Promise<SkillInvocation | undefined>;
+  issues?(): readonly { path: string; error: string }[];
+}
+
 export interface ReplQualifiedModel extends ModelCatalogEntry {
   provider: AgentProvider;
 }
@@ -74,6 +81,7 @@ export interface ReplOptions {
   sessionStore?: ReplSessionStore;
   memory?: ReplMemoryStore;
   models?: ReplModelManager;
+  skills?: ReplSkillManager;
   onModelChanged?: (model: string) => void;
   beforeTask?: () => void;
   onResult?: (result: AgentRunResult) => void;
@@ -92,6 +100,8 @@ const REPL_HELP = `/help     Show REPL commands
 /models refresh         Refresh the current provider's model cache
 /provider               Show configured model providers
 /provider <id>          Switch provider (for example: /provider minimax)
+/skills                 List discovered skills
+/<skill-name> [args]     Invoke a skill explicitly
 /exit     Exit the REPL
 Ctrl-D    Exit immediately from any TUI state`;
 
@@ -182,6 +192,24 @@ export async function runRepl(options: ReplOptions): Promise<Message[]> {
         lastRunUsage = emptyRunUsage();
         await persistHistory();
         options.io.write("Conversation history cleared.");
+        continue;
+      }
+      if (task === "/skills") {
+        if (!options.skills) {
+          options.io.error("Skills are unavailable.");
+          continue;
+        }
+        const skills = options.skills.list();
+        if (skills.length === 0) options.io.write("No skills discovered.");
+        else {
+          for (const skill of skills) {
+            const invocation = skill.userInvocable ? `/${skill.name}` : "(model only)";
+            options.io.write(`${invocation}\t${skill.description} · ${skill.source}`);
+          }
+        }
+        for (const issue of options.skills.issues?.() ?? []) {
+          options.io.error(`[skill] skipped ${issue.path}: ${issue.error}`);
+        }
         continue;
       }
       if (task === "/models" || task === "/models refresh") {
@@ -354,6 +382,11 @@ export async function runRepl(options: ReplOptions): Promise<Message[]> {
         } catch (error) {
           options.io.error(`[error] ${error instanceof Error ? error.message : String(error)}`);
         }
+        continue;
+      }
+      const invocation = await options.skills?.parseInvocation(task);
+      if (invocation) {
+        pendingTask = invocation.prompt;
         continue;
       }
       options.io.error(`Unknown REPL command: ${task}. Type /help for commands.`);

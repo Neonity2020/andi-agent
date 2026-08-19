@@ -12,6 +12,16 @@ export { MemoryStore, parseMemoryDocument } from "./memory/store";
 export { rankMemoryDocuments, tokenizeMemoryText, type RankMemoryOptions } from "./memory/retrieval";
 export type * from "./memory/types";
 export {
+  SkillManager,
+  type LoadedSkill,
+  type SkillFrontmatter,
+  type SkillInvocation,
+  type SkillLoadIssue,
+  type SkillManagerOptions,
+  type SkillSource,
+  type SkillSummary,
+} from "./skills/manager";
+export {
   runRepl,
   type ReplAgent,
   type ReplIO,
@@ -20,6 +30,7 @@ export {
   type ReplOptions,
   type ReplSelectItem,
   type ReplSelectOptions,
+  type ReplSkillManager,
   type ReplSessionStore,
   resolveModelSelection,
 } from "./repl";

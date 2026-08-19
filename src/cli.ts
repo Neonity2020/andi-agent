@@ -8,7 +8,7 @@ import { ModelCatalogManager } from "./model/catalog-manager";
 import { ModelCatalogStore } from "./model/catalog-store";
 import { runRepl, type ReplIO } from "./repl";
 import { SessionStore } from "./session";
-import { createCommandTool, type CommandApprover } from "./tools/command";
+import { createCommandTool, runCommand, type CommandApprover } from "./tools/command";
 import { createEditTool } from "./tools/editing";
 import { createGitTools } from "./tools/git";
 import { ToolRegistry } from "./tools/registry";
@@ -29,6 +29,7 @@ import type { ScheduledTask } from "./scheduler/types";
 import { Tui } from "./tui/tui";
 import { MemoryStore } from "./memory/store";
 import { createMemoryTools } from "./tools/memory";
+import { SkillManager } from "./skills/manager";
 
 const HELP = `andi-agent - a minimal Bun + TypeScript coding agent
 
@@ -318,7 +319,7 @@ async function handleScheduleCommand(args: readonly string[]): Promise<void> {
   try {
     const scheduler = new TaskScheduler({
       store,
-      runner: createCliScheduledRunner(workspace),
+      runner: await createCliScheduledRunner(workspace),
     });
     const completed = await scheduler.runNow(command.id, lifecycle.controller.signal);
     if (completed.lastRun?.status === "failed") throw new Error(completed.lastRun.error ?? "Scheduled task failed");
@@ -334,7 +335,7 @@ async function handleSchedulerCommand(args: readonly string[]): Promise<void> {
   const lifecycle = createProcessAbortController("Scheduler stopped by user");
   const scheduler = new TaskScheduler({
     store,
-    runner: createCliScheduledRunner(workspace),
+    runner: await createCliScheduledRunner(workspace),
     pollMs: command.pollMs,
     onError(task, error) {
       console.error(`[schedule:${task.id}] failed · ${error instanceof Error ? error.message : String(error)}`);
@@ -351,10 +352,11 @@ async function handleSchedulerCommand(args: readonly string[]): Promise<void> {
   }
 }
 
-function createCliScheduledRunner(workspace: Workspace) {
+async function createCliScheduledRunner(workspace: Workspace) {
   return createScheduledAgentRunner({
     workspace,
     config: loadConfig(),
+    skills: await SkillManager.load(workspace.root),
     onEvent(taskId, event) {
       if (!SCHEDULE_EVENT_TYPES.has(event.type)) return;
       if (event.type === "turn_started") {
@@ -402,10 +404,15 @@ export function createAgentToolRegistry(
   config: AgentConfig,
   approver?: CommandApprover,
   memory = new MemoryStore(workspace),
+  skills?: SkillManager,
 ): ToolRegistry {
   const approvalOptions = approver ? { approver } : {};
   const scheduleStore = new ScheduleStore(workspace);
-  const conversationalScheduledRunner = createScheduledAgentRunner({ workspace, config });
+  const conversationalScheduledRunner = createScheduledAgentRunner({
+    workspace,
+    config,
+    ...(skills ? { skills } : {}),
+  });
   return new ToolRegistry([
     ...createWorkspaceTools(workspace),
     createEditTool(workspace),
@@ -461,7 +468,14 @@ export async function main(args = Bun.argv.slice(2)): Promise<void> {
     });
     approver = cli.approval === "ask" ? tui.approve : undefined;
   }
-  const tools = createAgentToolRegistry(workspace, config, approver, memory);
+  const skills = await SkillManager.load(workspace.root, {
+    executeCommand: async (command, cwd) => {
+      const result = await runCommand(cwd, "sh", ["-c", command], 30_000, 64 * 1024, approver);
+      if (result.exitCode !== 0) throw new Error(`Skill context command failed (${result.exitCode}): ${result.stderr}`);
+      return result.stdout;
+    },
+  });
+  const tools = createAgentToolRegistry(workspace, config, approver, memory, skills);
   const configuredProviders = Object.keys(config.providers ?? {}) as Array<"agnes" | "minimax">;
   const providerInstances = new Map<"agnes" | "minimax", ReturnType<typeof createModelProvider>>();
   const catalogManagers = new Map<"agnes" | "minimax", ModelCatalogManager>();
@@ -486,6 +500,7 @@ export async function main(args = Bun.argv.slice(2)): Promise<void> {
     model,
     tools,
     memory,
+    skills,
     maxTurns: config.maxTurns,
     maxContextChars: config.maxContextChars,
     async onEvent(event) {
@@ -505,6 +520,7 @@ export async function main(args = Bun.argv.slice(2)): Promise<void> {
         agent,
         io: tui,
         memory,
+        skills,
         models,
         onModelChanged: (selected) => tui.setModel(`${model.currentProvider}/${selected}`),
         initialHistory: history,
@@ -543,6 +559,7 @@ export async function main(args = Bun.argv.slice(2)): Promise<void> {
         agent,
         io,
         memory,
+        skills,
         models,
         initialHistory: history,
         initialUsage: sessionSnapshot?.usage ?? emptyRunUsage(),
