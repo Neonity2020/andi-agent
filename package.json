@@ -18,6 +18,8 @@
     "typescript": "^5.9.0"
   },
   "dependencies": {
+    "cli-table3": "^0.6.5",
+    "marked": "^18.0.10",
     "puppeteer": "^25.8.0"
   }
 }

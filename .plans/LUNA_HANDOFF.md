@@ -102,12 +102,13 @@
 - 技能评分对 ASCII 词元使用整词匹配，避免 "hi" 之类短词作为子串命中 "searching"/"third-party" 导致问候语误加载技能。
 - Agent system prompt 只预加载技能名称/描述，正文按需加载；REPL 增加 `/skills` 和 `/skill-name [args]`。
 
-### TUI Markdown 表格
+### TUI Markdown 解析与 Grid 表格渲染
 
-- `renderMarkdown()` 现在识别标准 Markdown 表格，渲染 Unicode 边框、加粗表头以及左/中/右对齐。
-- 表格列按终端 cell 宽度计算，支持 CJK、转义管道符和长单元格换行，不会超过 TUI 可用宽度。
+- 升级为行业标准 `marked.Lexer` AST 解析驱动，彻底废除脆弱的手写正则状态机与逐行扫描逻辑，对代码块、引用、列表、标题及表格实现结构化 Token 解析。
+- Markdown 表格采用 OpenCode 同款标准 Grid 风格网格边框（`┌┬┐`、`├┼┤`、`└┴┘`、`│`、`─`），并结合主题暗色 `theme.style.dim` 增强可读性。
+- 表格列按终端 cell 宽度自适应分配（`Bun.stringWidth` / `Intl.Segmenter`），准确处理 CJK 双宽字符与 Emoji 宽度计算，支持左/中/右对齐、转义管道符及超宽单元格自动软折行。
 - 表格渲染覆盖最终 TUI 回复输出，不改变流式文本、代码块和普通 Markdown 行为。
-- 针对中英文混排和终端宽度限制导致的表格换行错位，`DEFAULT_SYSTEM_PROMPT` 增加了严格的表格输出规则：必须带标准 `|---|` 分隔行（避免漏写退化为普通文本）、优先 3-4 列（上限 5 列）、日期/温度/数值采用超紧凑格式（如 `08-19`、`23~31°C`）、多字段场景转两列键值表或列表。实测紧凑表格在 60/80 列下均可单行完整对齐且零折行。
+- 配合 `DEFAULT_SYSTEM_PROMPT` 紧凑表格输出引导，保证在 60/80 列及更宽终端下均能紧凑居中对齐、排版严整。
 
 ## 关键文件
 

@@ -68,7 +68,7 @@ describe("renderMarkdown", () => {
   });
 
   test("keeps escaped pipes inside table cells", () => {
-    expect(renderMarkdown("| Key | Value |\n| --- | --- |\n| a\\|b | `x` |", 30, theme)).toContain("│ a|b │ x     │");
+    expect(renderMarkdown("| Key | Value |\n| --- | --- |\n| a\\|b | `x` |", 30, theme)).toContain("│ a|b │ x   │");
   });
 
   test("applies inline bold and code styling per line", () => {

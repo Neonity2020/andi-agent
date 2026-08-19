@@ -1,91 +1,110 @@
-// Lightweight markdown renderer for assistant output: fenced code blocks,
-// headings, bullets, bold, and inline code, wrapped to the terminal width.
+// Standard markdown renderer for assistant output using marked Lexer AST.
 // Untrusted model text is rendered as text only; no HTML passthrough.
 
+import { Lexer, type Tokens } from "marked";
 import type { Theme } from "./theme";
-import { padEndWidth, textWidth, wrapText } from "./width";
+import { textWidth, wrapText } from "./width";
 
 export function renderMarkdown(text: string, width: number, theme: Theme): string[] {
   if (!Number.isInteger(width) || width < 4) throw new Error("width must be at least 4");
 
   const output: string[] = [];
-  let inFence = false;
-  let pendingBlank = false;
 
-  const emit = (line: string): void => {
-    if (line.length === 0) {
-      if (output.length > 0) pendingBlank = true;
-      return;
-    }
-    if (pendingBlank) {
+  const ensureBlockGap = (): void => {
+    if (output.length > 0 && output[output.length - 1] !== "") {
       output.push("");
-      pendingBlank = false;
     }
-    output.push(line);
   };
 
-  const rawLines = text.split("\n");
-  for (let lineIndex = 0; lineIndex < rawLines.length; lineIndex += 1) {
-    const rawLine = rawLines[lineIndex] ?? "";
-    const line = rawLine.replace(/\s+$/, "");
+  const tokens = Lexer.lex(text);
 
-    if (/^\s*(```|~~~)/.test(line)) {
-      inFence = !inFence;
-      if (!inFence) pendingBlank = true;
-      else if (output.length > 0) pendingBlank = true;
-      continue;
-    }
-
-    if (inFence) {
-      for (const part of wrapText(line, Math.max(width - 2, 2))) {
-        emit(theme.style.dim(`${theme.symbols.bar} ${part}`));
+  for (const token of tokens) {
+    switch (token.type) {
+      case "space": {
+        ensureBlockGap();
+        break;
       }
-      continue;
-    }
-
-    if (line.trim().length === 0) {
-      emit("");
-      continue;
-    }
-
-    const table = parseTable(rawLines, lineIndex);
-    if (table) {
-      for (const tableLine of renderTable(table, width, theme)) emit(tableLine);
-      lineIndex = table.endLine;
-      continue;
-    }
-
-    const heading = line.match(/^(#{1,6})\s+(.*)$/);
-    if (heading?.[2] !== undefined) {
-      for (const part of wrapText(heading[2], width)) emit(applyInline(theme.style.bold(part), theme));
-      continue;
-    }
-
-    const bullet = line.match(/^(\s*)[-*]\s+(.*)$/);
-    if (bullet?.[2] !== undefined) {
-      const prefix = `${theme.brandText(theme.symbols.bullet)} `;
-      for (const part of prefixLines(`${theme.symbols.bullet} `, prefix, bullet[2], width)) {
-        emit(applyInline(part, theme));
+      case "heading": {
+        ensureBlockGap();
+        for (const part of wrapText(token.text, width)) {
+          output.push(applyInline(theme.style.bold(part), theme));
+        }
+        break;
       }
-      continue;
-    }
-
-    const ordered = line.match(/^(\s*)(\d+)\.\s+(.*)$/);
-    if (ordered?.[3] !== undefined) {
-      const marker = `${ordered[2]}. `;
-      for (const part of prefixLines(marker, marker, ordered[3], width)) {
-        emit(applyInline(part, theme));
+      case "paragraph": {
+        ensureBlockGap();
+        for (const part of wrapText(token.text, width)) {
+          output.push(applyInline(part, theme));
+        }
+        break;
       }
-      continue;
+      case "code": {
+        ensureBlockGap();
+        const codeLines = token.text.split("\n");
+        for (const codeLine of codeLines) {
+          for (const part of wrapText(codeLine, Math.max(width - 2, 2))) {
+            output.push(theme.style.dim(`${theme.symbols.bar} ${part}`));
+          }
+        }
+        break;
+      }
+      case "list": {
+        ensureBlockGap();
+        const ordered = token.ordered;
+        token.items.forEach((item: Tokens.ListItem, index: number) => {
+          const marker = ordered ? `${index + 1}. ` : `${theme.symbols.bullet} `;
+          const styledMarker = ordered ? marker : `${theme.brandText(theme.symbols.bullet)} `;
+          for (const part of prefixLines(marker, styledMarker, item.text, width)) {
+            output.push(applyInline(part, theme));
+          }
+        });
+        break;
+      }
+      case "table": {
+        ensureBlockGap();
+        const headers = token.header.map((h: Tokens.TableCell) => h.text);
+        const rows = token.rows.map((row: Tokens.TableCell[]) => row.map((cell: Tokens.TableCell) => cell.text));
+        const alignments = token.align.map(
+          (a: "center" | "left" | "right" | null) => (a === "center" || a === "right" ? a : "left") as TableAlignment,
+        );
+        for (const tableLine of renderTable(headers, rows, alignments, width, theme)) {
+          output.push(tableLine);
+        }
+        break;
+      }
+      case "blockquote": {
+        ensureBlockGap();
+        for (const part of wrapText(token.text, Math.max(width - 2, 2))) {
+          output.push(theme.style.dim(`│ ${applyInline(part, theme)}`));
+        }
+        break;
+      }
+      case "hr": {
+        ensureBlockGap();
+        output.push(theme.style.dim("─".repeat(Math.min(width, 40))));
+        break;
+      }
+      default: {
+        if ("text" in token && typeof (token as { text: unknown }).text === "string") {
+          ensureBlockGap();
+          for (const part of wrapText((token as { text: string }).text, width)) {
+            output.push(applyInline(part, theme));
+          }
+        }
+        break;
+      }
     }
-
-    for (const part of wrapText(line, width)) emit(applyInline(part, theme));
   }
+
+  // Trim empty lines from head and tail
+  while (output.length > 0 && output[0] === "") output.shift();
+  while (output.length > 0 && output.at(-1) === "") output.pop();
+
   return output;
 }
 
-// Wraps text under a prefix: the first output line carries the styled prefix,
-// continuation lines align under it.
+type TableAlignment = "left" | "center" | "right";
+
 function prefixLines(
   plainPrefix: string,
   styledPrefix: string,
@@ -98,93 +117,38 @@ function prefixLines(
 }
 
 function applyInline(line: string, theme: Theme): string {
-  return line.replace(/\*\*([^*]+)\*\*/g, (_all, bold: string) => theme.style.bold(bold)).replace(
-    /`([^`]+)`/g,
-    (_all, code: string) => theme.infoText(code),
+  return line
+    .replace(/\*\*([^*]+)\*\*/g, (_all, bold: string) => theme.style.bold(bold))
+    .replace(/`([^`]+)`/g, (_all, code: string) => theme.infoText(code));
+}
+
+function renderTable(
+  headers: readonly string[],
+  rows: readonly (readonly string[])[],
+  alignments: readonly TableAlignment[],
+  width: number,
+  theme: Theme,
+): string[] {
+  const allRows = [headers, ...rows];
+  const colCount = headers.length;
+  const naturalWidths = headers.map((_header, column) =>
+    Math.max(1, ...allRows.map((row) => textWidth(row[column] ?? ""))),
   );
-}
-
-interface MarkdownTable {
-  headers: string[];
-  rows: string[][];
-  alignments: TableAlignment[];
-  endLine: number;
-}
-
-type TableAlignment = "left" | "center" | "right";
-
-function parseTable(lines: readonly string[], startLine: number): MarkdownTable | undefined {
-  const header = parseTableRow(lines[startLine] ?? "");
-  const delimiter = parseTableRow(lines[startLine + 1] ?? "");
-  if (!header || !delimiter || delimiter.length !== header.length || !delimiter.every(isDelimiterCell)) return undefined;
-
-  const rows: string[][] = [];
-  let endLine = startLine + 1;
-  for (let index = startLine + 2; index < lines.length; index += 1) {
-    const row = parseTableRow(lines[index] ?? "");
-    if (!row) break;
-    rows.push([...row.slice(0, header.length), ...Array(Math.max(0, header.length - row.length)).fill("")]);
-    endLine = index;
-  }
-
-  return {
-    headers: header,
-    rows,
-    alignments: delimiter.map(tableAlignment),
-    endLine,
-  };
-}
-
-function parseTableRow(line: string): string[] | undefined {
-  if (!line.includes("|")) return undefined;
-  const cells: string[] = [];
-  let current = "";
-  let escaped = false;
-  for (const character of line.trim()) {
-    if (escaped) {
-      current += character;
-      escaped = false;
-    } else if (character === "\\") {
-      escaped = true;
-    } else if (character === "|") {
-      cells.push(current.trim());
-      current = "";
-    } else {
-      current += character;
-    }
-  }
-  if (escaped) current += "\\";
-  cells.push(current.trim());
-  if (cells[0] === "") cells.shift();
-  if (cells.at(-1) === "") cells.pop();
-  return cells.length >= 2 ? cells : undefined;
-}
-
-function isDelimiterCell(cell: string): boolean {
-  return /^:?-{3,}:?$/.test(cell);
-}
-
-function tableAlignment(cell: string): TableAlignment {
-  const left = cell.startsWith(":");
-  const right = cell.endsWith(":");
-  if (left && right) return "center";
-  if (right) return "right";
-  return "left";
-}
-
-function renderTable(table: MarkdownTable, width: number, theme: Theme): string[] {
-  const sourceRows = [table.headers, ...table.rows];
-  const naturalWidths = table.headers.map((_header, column) =>
-    Math.max(1, ...sourceRows.map((row) => textWidth(row[column] ?? ""))),
-  );
-  const available = Math.max(table.headers.length, width - table.headers.length * 3 - 1);
+  // Grid borders overhead: 1 left + 1 right + (colCount - 1) dividers + 2*colCount inner spaces
+  const overhead = 1 + 1 + (colCount - 1) + 2 * colCount;
+  const available = Math.max(colCount, width - overhead);
   const widths = fitTableWidths(naturalWidths, available);
-  const border = (left: string, middle: string, right: string): string =>
-    left + widths.map((columnWidth) => "─".repeat(columnWidth + 2)).join(middle) + right;
-  const output = [border("┌", "┬", "┐")];
-  output.push(...renderTableRow(table.headers, widths, table.alignments, theme, true));
+
+  const border = (left: string, mid: string, right: string): string =>
+    theme.style.dim(left + widths.map((colWidth) => "─".repeat(colWidth + 2)).join(mid) + right);
+
+  const output: string[] = [];
+  output.push(border("┌", "┬", "┐"));
+  output.push(...renderTableRow(headers, widths, alignments, theme, true));
   output.push(border("├", "┼", "┤"));
-  for (const row of table.rows) output.push(...renderTableRow(row, widths, table.alignments, theme, false));
+  for (const row of rows) {
+    output.push(...renderTableRow(row, widths, alignments, theme, false));
+  }
   output.push(border("└", "┴", "┘"));
   return output;
 }
@@ -217,12 +181,13 @@ function renderTableRow(
 ): string[] {
   const wrapped = row.map((cell, index) => wrapText(cell, widths[index] ?? 1));
   const height = Math.max(1, ...wrapped.map((lines) => lines.length));
+  const sep = theme.style.dim("│");
   return Array.from({ length: height }, (_value, lineIndex) => {
     const cells = widths.map((columnWidth, column) => {
       const value = wrapped[column]?.[lineIndex] ?? "";
       return formatTableCell(value, columnWidth, alignments[column] ?? "left", theme, header);
     });
-    return `│ ${cells.join(" │ ")} │`;
+    return `${sep} ${cells.join(` ${sep} `)} ${sep}`;
   });
 }
 
@@ -240,5 +205,5 @@ function formatTableCell(
     const left = Math.floor(missing / 2);
     return " ".repeat(left) + styled + " ".repeat(missing - left);
   }
-  return padEndWidth(styled, width);
+  return styled + " ".repeat(missing);
 }
