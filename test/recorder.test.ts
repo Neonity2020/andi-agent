@@ -19,11 +19,19 @@ describe("RunRecorder", () => {
     const recorder = new RunRecorder(workspace);
 
     await recorder.record({ type: "turn_started", runId: "run-1", turn: 1, messageCount: 2 });
+    await recorder.record({
+      type: "memory_context_loaded",
+      runId: "run-1",
+      ids: ["style"],
+      chars: 200,
+      truncated: false,
+    });
     await recorder.record({ type: "model_text_delta", runId: "run-1", turn: 1, delta: "private prompt" });
     await recorder.record({ type: "agent_failed", runId: "run-1", error: "Bearer secret-token" });
 
     const log = await workspace.read(".andi-agent/runs/run-1.jsonl");
     expect(log).toContain("turn_started");
+    expect(log).toContain("memory_context_loaded");
     expect(log).not.toContain("private prompt");
     expect(log).not.toContain("secret-token");
     expect(log).toContain("[REDACTED]");

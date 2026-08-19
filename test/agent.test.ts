@@ -184,6 +184,8 @@ describe("Agent", () => {
     const system = defaultModel.requests[0]?.[0] as Message | undefined;
     expect(system?.role).toBe("system");
     expect(system?.content).toContain('If \"kb/README.md\" exists in the current workspace');
+    expect(system?.content).toContain("Use durable workspace memory when a task refers to previous work");
+    expect(system?.content).toContain("Use memory_remember only for stable project facts");
 
     const customModel = new ScriptedModel([{ content: "ok", toolCalls: [] }]);
     const customAgent = new Agent({ model: customModel, tools: new ToolRegistry(), kbPath: ".knowledge" });

@@ -176,6 +176,16 @@ export class Tui {
     case "context_compacted":
       this.#seal([this.#theme.style.dim(`context compacted ${this.#theme.symbols.dot} dropped ${event.droppedMessages} message(s)`)]);
       break;
+    case "memory_context_loaded":
+      this.#seal([
+        this.#theme.style.dim(
+          `memory ${this.#theme.symbols.dot} ${event.ids.length} note(s)${event.truncated ? " (truncated)" : ""}`,
+        ),
+      ]);
+      break;
+    case "memory_context_failed":
+      this.#seal([this.#theme.warnText(`memory unavailable ${this.#theme.symbols.dot} ${event.error}`)]);
+      break;
     case "agent_completed":
       this.#seal([this.#theme.style.dim(`done ${this.#theme.symbols.arrow} ${event.turns} turn(s)`)]);
       this.#activity.endTurn();

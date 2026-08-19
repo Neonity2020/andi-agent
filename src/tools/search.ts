@@ -36,6 +36,8 @@ export async function searchCode(
     "--glob",
     "!.andi-agent/**",
     "--glob",
+    "!.memory/**",
+    "--glob",
     "!node_modules/**",
   ];
   if (!options.regex) args.push("--fixed-strings");

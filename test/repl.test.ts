@@ -224,4 +224,56 @@ describe("runRepl", () => {
     expect(io.output).toContain("Recovery complete · repaired 1 missing tool result(s).");
     expect(history[1]).toMatchObject({ role: "tool", toolCallId: "missing" });
   });
+
+  test("lists, searches, and shows durable memory without calling the model", async () => {
+    const io = scriptedIO(["/memory", "/memory search style", "/memory show preference", "/exit"]);
+    let modelCalls = 0;
+    const agent: ReplAgent = {
+      async runWithHistory(task, history = []) {
+        modelCalls += 1;
+        return appendResult(task, history);
+      },
+    };
+    await runRepl({
+      agent,
+      io,
+      memory: {
+        async list() {
+          return [{
+            id: "preference",
+            title: "Response Style",
+            tags: ["style"],
+            updated: "2026-08-19T00:00:00.000Z",
+            path: ".memory/preference.md",
+          }];
+        },
+        async search() {
+          return [{
+            id: "preference",
+            title: "Response Style",
+            tags: ["style"],
+            updated: "2026-08-19T00:00:00.000Z",
+            path: ".memory/preference.md",
+            score: 10,
+            snippet: "Be concise.",
+          }];
+        },
+        async read() {
+          return {
+            id: "preference",
+            title: "Response Style",
+            tags: ["style"],
+            updated: "2026-08-19T00:00:00.000Z",
+            path: ".memory/preference.md",
+            content: "Be concise.",
+          };
+        },
+      },
+    });
+
+    expect(modelCalls).toBe(0);
+    expect(io.output.some((line) => line.includes("preference\tResponse Style"))).toBeTrue();
+    expect(io.output.some((line) => line.includes("preference\t10.00"))).toBeTrue();
+    expect(io.output).toContain("# Response Style\n\nBe concise.");
+  });
 });

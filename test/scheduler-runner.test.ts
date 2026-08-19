@@ -7,6 +7,7 @@ import { createScheduledAgentRunner } from "../src/scheduler/runner";
 import type { ScheduledTask } from "../src/scheduler/types";
 import { SessionStore } from "../src/session";
 import { Workspace } from "../src/tools/workspace";
+import { MemoryStore } from "../src/memory/store";
 
 const temporaryDirectories: string[] = [];
 
@@ -19,9 +20,17 @@ describe("createScheduledAgentRunner", () => {
     const directory = await mkdtemp(join(tmpdir(), "andi-agent-scheduled-runner-"));
     temporaryDirectories.push(directory);
     const workspace = await Workspace.create(directory);
+    await new MemoryStore(workspace).remember({
+      id: "scheduled-work",
+      title: "Scheduled Work Convention",
+      tags: ["scheduled", "work"],
+      content: "Scheduled work should produce concise output.",
+    });
     let receivedToolNames: string[] = [];
+    let receivedMessages: readonly import("../src/model/types").Message[] = [];
     const model: ModelProvider = {
-      async complete(_messages, tools) {
+      async complete(messages, tools) {
+        receivedMessages = messages;
         receivedToolNames = tools.map((tool) => tool.name);
         return {
           content: "scheduled work complete",
@@ -65,5 +74,10 @@ describe("createScheduledAgentRunner", () => {
     expect(receivedToolNames).not.toContain("schedule_add");
     expect(receivedToolNames).not.toContain("schedule_run");
     expect(receivedToolNames).toContain("web_search");
+    expect(receivedToolNames).toContain("memory_search");
+    expect(receivedToolNames).toContain("memory_read");
+    expect(receivedToolNames).not.toContain("memory_remember");
+    expect(receivedToolNames).not.toContain("memory_archive");
+    expect(receivedMessages.some((message) => message.content?.includes("Scheduled work should produce concise output"))).toBeTrue();
   });
 });

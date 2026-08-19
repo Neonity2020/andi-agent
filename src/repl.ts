@@ -3,6 +3,7 @@ import type { Message, RunUsage } from "./model/types";
 import { isCancellationError } from "./runtime/abort";
 import { repairIncompleteToolCalls } from "./session";
 import { addRunUsage, emptyRunUsage } from "./usage";
+import type { MemoryDocument, MemoryMatch, MemorySummary } from "./memory/types";
 
 export interface ReplAgent {
   runWithHistory(
@@ -25,6 +26,12 @@ export interface ReplIO {
   close?(): void;
 }
 
+export interface ReplMemoryStore {
+  list(signal?: AbortSignal): Promise<MemorySummary[]>;
+  search(query: string, limit?: number, signal?: AbortSignal): Promise<MemoryMatch[]>;
+  read(id: string, signal?: AbortSignal): Promise<MemoryDocument>;
+}
+
 export interface ReplOptions {
   agent: ReplAgent;
   io: ReplIO;
@@ -33,6 +40,7 @@ export interface ReplOptions {
   initialTask?: string;
   sessionId?: string;
   sessionStore?: ReplSessionStore;
+  memory?: ReplMemoryStore;
   beforeTask?: () => void;
   onResult?: (result: AgentRunResult) => void;
   onError?: () => void;
@@ -43,6 +51,9 @@ const REPL_HELP = `/help     Show REPL commands
 /usage    Show token and model timing totals
 /recover  Repair incomplete tool-call history
 /clear    Clear in-memory and persisted conversation history
+/memory [list]          List durable workspace memories
+/memory search <query>  Search durable workspace memories
+/memory show <id>       Show one durable workspace memory
 /exit     Exit the REPL`;
 
 export async function runRepl(options: ReplOptions): Promise<Message[]> {
@@ -125,6 +136,56 @@ export async function runRepl(options: ReplOptions): Promise<Message[]> {
         lastRunUsage = emptyRunUsage();
         await persistHistory();
         options.io.write("Conversation history cleared.");
+        continue;
+      }
+      if (task === "/memory" || task === "/memory list") {
+        if (!options.memory) {
+          options.io.error("Long-term memory is unavailable.");
+          continue;
+        }
+        try {
+          const memories = await options.memory.list();
+          if (memories.length === 0) options.io.write("No long-term memories.");
+          else {
+            for (const memory of memories) {
+              options.io.write(`${memory.id}\t${memory.title}\t${memory.tags.join(", ") || "no tags"}`);
+            }
+          }
+        } catch (error) {
+          options.io.error(`[error] ${error instanceof Error ? error.message : String(error)}`);
+        }
+        continue;
+      }
+      if (task.startsWith("/memory search ")) {
+        if (!options.memory) {
+          options.io.error("Long-term memory is unavailable.");
+          continue;
+        }
+        try {
+          const query = task.slice("/memory search ".length).trim();
+          const matches = await options.memory.search(query, 10);
+          if (matches.length === 0) options.io.write("No matching memories.");
+          else {
+            for (const match of matches) {
+              options.io.write(`${match.id}\t${match.score.toFixed(2)}\t${match.title}\n${match.snippet}`);
+            }
+          }
+        } catch (error) {
+          options.io.error(`[error] ${error instanceof Error ? error.message : String(error)}`);
+        }
+        continue;
+      }
+      if (task.startsWith("/memory show ")) {
+        if (!options.memory) {
+          options.io.error("Long-term memory is unavailable.");
+          continue;
+        }
+        try {
+          const memory = await options.memory.read(task.slice("/memory show ".length).trim());
+          options.io.write(`# ${memory.title}\n\n${memory.content}`);
+        } catch (error) {
+          options.io.error(`[error] ${error instanceof Error ? error.message : String(error)}`);
+        }
         continue;
       }
       options.io.error(`Unknown REPL command: ${task}. Type /help for commands.`);

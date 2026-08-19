@@ -22,7 +22,7 @@ export class RunRecorder {
 }
 
 function sanitizeEvent(event: Exclude<AgentEvent, { type: "model_text_delta" }>): Record<string, unknown> {
-  if (event.type === "agent_failed") {
+  if (event.type === "agent_failed" || event.type === "memory_context_failed") {
     return { ...event, error: redact(event.error).slice(0, 300) };
   }
   return event;

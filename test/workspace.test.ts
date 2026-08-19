@@ -41,4 +41,11 @@ describe("Workspace", () => {
 
     expect(workspace.write("linked/secret.txt", "nope")).rejects.toThrow("escapes workspace");
   });
+
+  test("reserves long-term memory from generic tools but permits explicit Git paths", async () => {
+    const workspace = await createWorkspace();
+    expect(() => workspace.assertToolPath(".memory/preferences.md")).toThrow("managed by the memory tools");
+    expect(() => workspace.assertGitPath(".memory/preferences.md")).not.toThrow();
+    expect(() => workspace.assertGitPath(".andi-agent/sessions/private.json")).toThrow("reserved");
+  });
 });

@@ -24,6 +24,8 @@ import { TaskScheduler } from "./scheduler/scheduler";
 import { ScheduleStore } from "./scheduler/store";
 import type { ScheduledTask } from "./scheduler/types";
 import { Tui } from "./tui/tui";
+import { MemoryStore } from "./memory/store";
+import { createMemoryTools } from "./tools/memory";
 
 const HELP = `andi-agent - a minimal Bun + TypeScript coding agent
 
@@ -244,6 +246,12 @@ function createEventReporter(): {
     case "context_compacted":
       console.error(`[agent] context compacted · dropped ${event.droppedMessages} old message(s)`);
       break;
+    case "memory_context_loaded":
+      console.error(`[memory] loaded ${event.ids.length} note(s) · ${event.chars} chars`);
+      break;
+    case "memory_context_failed":
+      console.error(`[memory] unavailable · ${event.error}`);
+      break;
     case "agent_completed":
       console.error(`[agent] completed in ${event.turns} turn(s)`);
       break;
@@ -382,6 +390,7 @@ export function createAgentToolRegistry(
   workspace: Workspace,
   config: AgentConfig,
   approver?: CommandApprover,
+  memory = new MemoryStore(workspace),
 ): ToolRegistry {
   const approvalOptions = approver ? { approver } : {};
   const scheduleStore = new ScheduleStore(workspace);
@@ -393,6 +402,7 @@ export function createAgentToolRegistry(
     createCommandTool(workspace.root, approvalOptions),
     ...createGitTools(workspace, approvalOptions),
     ...createSchedulerTools(scheduleStore, { runner: conversationalScheduledRunner }),
+    ...createMemoryTools(memory),
     ...(config.exa ? [createWebSearchTool(config.exa)] : []),
   ]);
 }
@@ -418,6 +428,7 @@ export async function main(args = Bun.argv.slice(2)): Promise<void> {
   if (cli.repl && !process.stdin.isTTY) throw new Error("--repl requires an interactive TTY");
   const config = loadConfig();
   const workspace = await Workspace.create(cli.cwd);
+  const memory = new MemoryStore(workspace);
   const useTui =
     cli.repl && !cli.plain && process.stdin.isTTY === true && process.stdout.isTTY === true;
   const terminal = cli.repl && !useTui ? new TerminalChannel() : undefined;
@@ -437,13 +448,14 @@ export async function main(args = Bun.argv.slice(2)): Promise<void> {
     });
     approver = cli.approval === "ask" ? tui.approve : undefined;
   }
-  const tools = createAgentToolRegistry(workspace, config, approver);
+  const tools = createAgentToolRegistry(workspace, config, approver, memory);
   const model = new OpenAICompatibleProvider(config);
   const reporter = createEventReporter();
   const recorder = cli.logEvents ? new RunRecorder(workspace) : undefined;
   const agent = new Agent({
     model,
     tools,
+    memory,
     maxTurns: config.maxTurns,
     maxContextChars: config.maxContextChars,
     async onEvent(event) {
@@ -462,6 +474,7 @@ export async function main(args = Bun.argv.slice(2)): Promise<void> {
       await runRepl({
         agent,
         io: tui,
+        memory,
         initialHistory: history,
         initialUsage: sessionSnapshot?.usage ?? emptyRunUsage(),
         ...(cli.task ? { initialTask: cli.task } : {}),
@@ -497,6 +510,7 @@ export async function main(args = Bun.argv.slice(2)): Promise<void> {
       await runRepl({
         agent,
         io,
+        memory,
         initialHistory: history,
         initialUsage: sessionSnapshot?.usage ?? emptyRunUsage(),
         ...(cli.task ? { initialTask: cli.task } : {}),

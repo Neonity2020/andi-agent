@@ -152,6 +152,21 @@ describe("Tui", () => {
     expect(output()).toContain("turn cancelled");
   });
 
+  test("shows memory recall metadata without exposing memory content", () => {
+    const { tui, output } = createHarness();
+    tui.start();
+    tui.beginRun();
+    tui.handleAgentEvent({
+      type: "memory_context_loaded",
+      runId: "r",
+      ids: ["style", "architecture"],
+      chars: 800,
+      truncated: true,
+    });
+    expect(output()).toContain("memory · 2 note(s) (truncated)");
+    expect(output()).not.toContain("architecture decision body");
+  });
+
   test("routes approval keys with y/N semantics", async () => {
     const { tui, stdin, output } = createHarness();
     tui.start();

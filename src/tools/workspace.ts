@@ -44,6 +44,17 @@ export class Workspace {
     if (pathFromRoot === ".andi-agent" || pathFromRoot.startsWith(`.andi-agent${sep}`)) {
       throw new Error("The .andi-agent directory is reserved for internal state");
     }
+    if (pathFromRoot === ".memory" || pathFromRoot.startsWith(`.memory${sep}`)) {
+      throw new Error("The .memory directory is managed by the memory tools");
+    }
+  }
+
+  assertGitPath(inputPath: string): void {
+    const candidate = this.#lexicalPath(inputPath);
+    const pathFromRoot = relative(this.root, candidate);
+    if (pathFromRoot === ".andi-agent" || pathFromRoot.startsWith(`.andi-agent${sep}`)) {
+      throw new Error("The .andi-agent directory is reserved for internal state");
+    }
   }
 
   async #existingPath(inputPath: string): Promise<string> {
@@ -100,7 +111,12 @@ export class Workspace {
       entries.sort((left, right) => left.name.localeCompare(right.name));
       for (const entry of entries) {
         if (output.length >= limit) return;
-        if (entry.name === ".git" || entry.name === ".andi-agent" || entry.name === "node_modules") continue;
+        if (
+          entry.name === ".git" ||
+          entry.name === ".andi-agent" ||
+          entry.name === ".memory" ||
+          entry.name === "node_modules"
+        ) continue;
         const absolute = join(directory, entry.name);
         const display = relative(this.root, absolute);
         if (entry.isSymbolicLink()) {

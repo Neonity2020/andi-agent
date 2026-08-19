@@ -54,6 +54,14 @@ andi "修复失败的测试"      # 单次任务模式
 
 不带任何参数运行 `andi` 等价于 `--repl`，workspace 始终是当前目录。API 配置按优先级解析：shell 环境变量 > 当前目录的 `.env`（Bun 自动加载）> andi-agent 安装目录的 `.env`，因此在其他项目中运行 `andi` 无需重复配置 Key。
 
+### 长期记忆
+
+andi-agent 使用当前 workspace 的 `.memory/` 保存可跨 session 复用的 Markdown 记忆，例如稳定的项目事实、架构决策、工作约定和用户偏好。每轮开始前会进行本地中英文词法检索，最多把 3 篇相关记忆临时注入模型请求；这些内容不会写入 session，也不会为了填满配额加载无关记忆。
+
+交互 Agent 提供 `memory_search`、`memory_read`、`memory_remember` 和 `memory_archive`。更新已有记忆必须携带上次读取到的 `updated` 值，过期写入会被拒绝；归档会移动到 `.memory/archive/`，不会永久删除。定时任务 Agent 只能搜索和读取。通用文件工具不能直接修改 `.memory/`。
+
+REPL 可直接执行 `/memory list`、`/memory search <query>` 和 `/memory show <id>`，这些命令不调用模型。不要在长期记忆中保存 API Key、原始对话、猜测、测试输出或临时运行状态；后者仍存放在已忽略的 `.andi-agent/` 中。
+
 ## 命令
 
 ```bash
@@ -197,11 +205,13 @@ bun run test:live
 ## 当前能力
 
 - `read_file`：读取工作区内的 UTF-8 文件；
-- `list_files`：递归列出工作区文件，跳过 `.git` 和 `node_modules`；
+- `list_files`：递归列出普通工作区文件，跳过 `.git`、`.andi-agent`、`.memory` 和 `node_modules`；
 - `write_file`：创建或覆盖工作区内的 UTF-8 文件；
 - `edit_file`：仅在旧文本唯一匹配时进行精确替换；
 - `run_command`：无 shell 地运行白名单内的测试、检查、构建和只读 Git 命令；
 - `web_search`：通过可选 Exa API 搜索当前网络信息并返回可引用来源；
+- `memory_search` / `memory_read`：检索和读取跨 session 的长期 Markdown 记忆；
+- `memory_remember` / `memory_archive`：受容量、敏感信息和并发保护地维护长期记忆；
 - 路径穿越与符号链接写入防护；
 - 命令超时、输出截断、环境变量脱敏；
 - Ctrl-C 贯穿模型请求、SSE reader 和长运行子进程的取消链路；

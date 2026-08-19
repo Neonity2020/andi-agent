@@ -3,7 +3,17 @@ export { compactMessages, type CompactionResult } from "./context";
 export { loadConfig, type AgentConfig, type ExaConfig } from "./config";
 export { OpenAICompatibleProvider, type OpenAICompatibleOptions } from "./model/openai-compatible";
 export type * from "./model/types";
-export { runRepl, type ReplAgent, type ReplIO, type ReplOptions, type ReplSessionStore } from "./repl";
+export { MemoryStore, parseMemoryDocument } from "./memory/store";
+export { rankMemoryDocuments, tokenizeMemoryText, type RankMemoryOptions } from "./memory/retrieval";
+export type * from "./memory/types";
+export {
+  runRepl,
+  type ReplAgent,
+  type ReplIO,
+  type ReplMemoryStore,
+  type ReplOptions,
+  type ReplSessionStore,
+} from "./repl";
 export { OperationCancelledError, cancellationError, isCancellationError, throwIfAborted } from "./runtime/abort";
 export { RunRecorder } from "./runtime/recorder";
 export {
@@ -36,6 +46,7 @@ export {
 } from "./tools/command";
 export { createEditTool } from "./tools/editing";
 export { createGitTools, type GitToolOptions } from "./tools/git";
+export { createMemoryTools, type MemoryToolOptions } from "./tools/memory";
 export { ToolRegistry } from "./tools/registry";
 export { createSearchTool, searchCode, type SearchCodeOptions } from "./tools/search";
 export { createSchedulerTools, type SchedulerToolOptions } from "./tools/scheduler";

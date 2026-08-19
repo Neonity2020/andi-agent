@@ -77,6 +77,9 @@ describe("createAgentToolRegistry", () => {
     expect(createAgentToolRegistry(workspace, config).definitions().map((tool) => tool.name)).not.toContain(
       "web_search",
     );
+    expect(createAgentToolRegistry(workspace, config).definitions().map((tool) => tool.name)).toEqual(
+      expect.arrayContaining(["memory_search", "memory_read", "memory_remember", "memory_archive"]),
+    );
     expect(
       createAgentToolRegistry(workspace, {
         ...config,

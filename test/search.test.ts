@@ -17,9 +17,11 @@ describe("searchCode", () => {
     await mkdir(join(root, "src"), { recursive: true });
     await mkdir(join(root, "node_modules", "pkg"), { recursive: true });
     await mkdir(join(root, ".andi-agent", "sessions"), { recursive: true });
+    await mkdir(join(root, ".memory"), { recursive: true });
     await writeFile(join(root, "src", "main.ts"), "const uniqueNeedle = true;\n");
     await writeFile(join(root, "node_modules", "pkg", "index.js"), "uniqueNeedle\n");
     await writeFile(join(root, ".andi-agent", "sessions", "secret.json"), "uniqueNeedle\n");
+    await writeFile(join(root, ".memory", "private.md"), "uniqueNeedle\n");
 
     const result = await searchCode(root, "uniqueNeedle");
 

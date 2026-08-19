@@ -13,6 +13,8 @@ import { createWorkspaceTools, type Workspace } from "../tools/workspace";
 import { createWebSearchTool } from "../tools/web-search";
 import { addRunUsage } from "../usage";
 import type { ScheduledTaskRunner } from "./types";
+import { MemoryStore } from "../memory/store";
+import { createMemoryTools } from "../tools/memory";
 
 export interface ScheduledAgentRunnerOptions {
   workspace: Workspace;
@@ -24,12 +26,14 @@ export interface ScheduledAgentRunnerOptions {
 
 export function createScheduledAgentRunner(options: ScheduledAgentRunnerOptions): ScheduledTaskRunner {
   const model = options.model ?? new OpenAICompatibleProvider(options.config);
+  const memory = new MemoryStore(options.workspace);
   const tools = new ToolRegistry([
     ...createWorkspaceTools(options.workspace),
     createEditTool(options.workspace),
     createSearchTool(options.workspace.root),
     createCommandTool(options.workspace.root),
     ...createGitTools(options.workspace),
+    ...createMemoryTools(memory, { writable: false }),
     ...(options.config.exa ? [createWebSearchTool(options.config.exa)] : []),
   ]);
   const sessions = new SessionStore(options.workspace);
@@ -41,6 +45,7 @@ export function createScheduledAgentRunner(options: ScheduledAgentRunnerOptions)
     const agent = new Agent({
       model,
       tools,
+      memory,
       maxTurns: options.config.maxTurns,
       maxContextChars: options.config.maxContextChars,
       async onEvent(event) {

@@ -43,7 +43,7 @@ function requirePaths(values: Record<string, unknown>, workspace: Workspace): st
   for (const path of paths) {
     if (path === ".") throw new Error("Path '.' is not allowed; list files explicitly");
     if (path.startsWith(":")) throw new Error("Git pathspec magic is not allowed");
-    workspace.assertToolPath(path);
+    workspace.assertGitPath(path);
   }
   return paths;
 }
