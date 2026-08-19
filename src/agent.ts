@@ -115,7 +115,8 @@ export class Agent {
     const runId = randomUUID();
     let usage = emptyRunUsage();
     let checkpointHealthy = true;
-    const systemPrompt = this.#systemPromptWithModelIdentity();
+    const previousIdentity = history[0]?.role === "system" ? parseModelIdentity(history[0].content) : undefined;
+    const systemPrompt = this.#systemPromptWithModelIdentity(previousIdentity);
     let messages: Message[] = history.length > 0 ? [...history] : [{ role: "system", content: systemPrompt }];
     if (messages[0]?.role === "system") messages[0] = { role: "system", content: this.#replaceModelIdentity(messages[0].content, systemPrompt) };
     else messages.unshift({ role: "system", content: systemPrompt });
@@ -133,18 +134,6 @@ export class Agent {
         throw error;
       }
     };
-
-    const identityAnswer = modelIdentityAnswer(task, this.#model.getModelIdentity?.());
-    if (identityAnswer) {
-      await checkpoint("running");
-      await this.#emit({ type: "turn_started", runId, turn: 1, messageCount: messages.length });
-      await this.#emit({ type: "model_text_delta", runId, turn: 1, delta: identityAnswer });
-      await this.#emit({ type: "model_completed", runId, turn: 1, toolCallCount: 0, durationMs: 0 });
-      messages.push({ role: "assistant", content: identityAnswer, toolCalls: [] });
-      await checkpoint("idle");
-      await this.#emit({ type: "agent_completed", runId, turns: 1 });
-      return { output: identityAnswer, messages, runId, usage };
-    }
 
     try {
       throwIfAborted(options.signal);
@@ -268,10 +257,13 @@ export class Agent {
     }
   }
 
-  #systemPromptWithModelIdentity(): string {
+  #systemPromptWithModelIdentity(previous?: { provider: string; model: string }): string {
     const identity = this.#model.getModelIdentity?.();
     if (!identity) return this.#systemPrompt;
-    return `${this.#systemPrompt}\n\nCURRENT MODEL IDENTITY (authoritative runtime state):\n- Provider: ${identity.provider}\n- Model: ${identity.model}\nIf the user asks which model or provider you are using, answer from this identity rather than guessing from the conversation.`;
+    const switched = previous && (previous.provider !== identity.provider || previous.model !== identity.model)
+      ? `\nThe runtime model was switched since earlier turns (previously ${previous.provider}/${previous.model}); assistant statements about that previous model are outdated.`
+      : "";
+    return `${this.#systemPrompt}\n\nCURRENT MODEL IDENTITY (authoritative runtime state):\n- Provider: ${identity.provider}\n- Model: ${identity.model}\nThis block reflects the live runtime state for this request. Conversation history may contain stale claims about a different model or provider from before a runtime switch; ignore them. If the user asks which model or provider you are using, answer only from this identity.${switched}`;
   }
 
   #replaceModelIdentity(existing: string, current: string): string {
@@ -285,14 +277,10 @@ export class Agent {
   }
 }
 
-function modelIdentityAnswer(task: string, identity: { provider: string; model: string } | undefined): string | undefined {
-  if (!identity) return undefined;
-  const normalized = task.trim().toLowerCase();
-  const asksAboutModel =
-    /模型|model|provider/i.test(normalized) &&
-    /哪款|什么|哪个|当前|正在|使用|which|what|using/i.test(normalized);
-  if (!asksAboutModel) return undefined;
-  return `当前使用的模型是 ${identity.model}（Provider: ${identity.provider}）。`;
+function parseModelIdentity(systemContent: unknown): { provider: string; model: string } | undefined {
+  if (typeof systemContent !== "string") return undefined;
+  const match = systemContent.match(/CURRENT MODEL IDENTITY \(authoritative runtime state\):\n- Provider: (\S+)\n- Model: ([^\n]+)/);
+  return match ? { provider: match[1]!, model: match[2]!.trim() } : undefined;
 }
 
 function withMemoryContext(messages: readonly Message[], memoryContext: string): Message[] {

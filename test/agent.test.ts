@@ -107,20 +107,87 @@ describe("Agent", () => {
     expect(requests[1]?.[0]?.content).not.toContain("currently running on:");
   });
 
-  test("answers explicit model identity questions from runtime state", async () => {
-    let calls = 0;
+  test("marks the runtime switch when history carries a stale identity", async () => {
+    const requests: string[] = [];
     const model: ModelProvider = {
       getModelIdentity: () => ({ provider: "minimax", model: "MiniMax-M2.7" }),
-      async complete() {
+      async complete(messages) {
+        requests.push(String(messages[0]?.content ?? ""));
+        return { content: "ok", toolCalls: [] };
+      },
+    };
+    const agent = new Agent({ model, tools: new ToolRegistry() });
+    const staleHistory: Message[] = [
+      { role: "system", content: "system\n\nCURRENT MODEL IDENTITY (authoritative runtime state):\n- Provider: agnes\n- Model: agnes-2.5-flash\nOld instructions." },
+      { role: "user", content: "你在使用哪款模型？" },
+      { role: "assistant", content: "当前使用的是 agnes-2.5-flash 模型。", toolCalls: [] },
+    ];
+
+    await agent.runWithHistory("我已经切换了模型，现在用哪款？", staleHistory);
+
+    expect(requests[0]).toContain("Provider: minimax");
+    expect(requests[0]).toContain("Model: MiniMax-M2.7");
+    expect(requests[0]).toContain("The runtime model was switched since earlier turns (previously agnes/agnes-2.5-flash)");
+    expect(requests[0]).toContain("stale claims about a different model or provider");
+    expect(requests[0]).not.toContain("Old instructions.");
+  });
+
+  test("omits the switch note when the identity is unchanged", async () => {
+    const requests: string[] = [];
+    const model: ModelProvider = {
+      getModelIdentity: () => ({ provider: "agnes", model: "agnes-2.5-flash" }),
+      async complete(messages) {
+        requests.push(String(messages[0]?.content ?? ""));
+        return { content: "ok", toolCalls: [] };
+      },
+    };
+    const agent = new Agent({ model, tools: new ToolRegistry() });
+    const sameHistory: Message[] = [
+      { role: "system", content: "system\n\nCURRENT MODEL IDENTITY (authoritative runtime state):\n- Provider: agnes\n- Model: agnes-2.5-flash" },
+    ];
+
+    await agent.runWithHistory("continue", sameHistory);
+
+    expect(requests[0]).toContain("Provider: agnes");
+    expect(requests[0]).not.toContain("The runtime model was switched");
+  });
+
+  test("routes identity questions through the model with authoritative identity context", async () => {
+    let calls = 0;
+    const requests: Message[][] = [];
+    const model: ModelProvider = {
+      getModelIdentity: () => ({ provider: "minimax", model: "MiniMax-M2.7" }),
+      async complete(messages) {
         calls += 1;
-        return { content: "wrong model", toolCalls: [] };
+        requests.push([...messages]);
+        return { content: "当前使用的模型是 MiniMax-M2.7（Provider: minimax）。", toolCalls: [] };
       },
     };
 
     const result = await new Agent({ model, tools: new ToolRegistry() }).runWithHistory("你现在使用的是哪款模型？");
 
-    expect(result.output).toBe("当前使用的模型是 MiniMax-M2.7（Provider: minimax）。");
-    expect(calls).toBe(0);
+    expect(result.output).toContain("MiniMax-M2.7");
+    expect(calls).toBe(1);
+    expect(requests[0]?.[0]?.content).toContain("Provider: minimax");
+    expect(requests[0]?.[0]?.content).toContain("Model: MiniMax-M2.7");
+  });
+
+  test("does not intercept ordinary tasks that merely mention model keywords", async () => {
+    let calls = 0;
+    const model: ModelProvider = {
+      getModelIdentity: () => ({ provider: "minimax", model: "MiniMax-M2.7" }),
+      async complete() {
+        calls += 1;
+        return { content: "field analysis", toolCalls: [] };
+      },
+    };
+
+    const result = await new Agent({ model, tools: new ToolRegistry() }).runWithHistory(
+      "这个数据模型里哪个字段正在被使用？逐个分析",
+    );
+
+    expect(result.output).toBe("field analysis");
+    expect(calls).toBe(1);
   });
 
   test("emits a compaction event when old turns exceed the budget", async () => {
