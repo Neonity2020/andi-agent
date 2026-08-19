@@ -6,7 +6,7 @@
 - 分支：`codex/minimax-provider-fixes`
 - 本轮已包含 MiniMax、多 Provider/模型切换、动态模型身份、MiniMax think 折叠、天气工具、SKILL 机制和 TUI Markdown 表格渲染。
 - 本次 handoff 更新准备随当前功能一起提交并推送。
-- 最近完整验证：`bun test` 221 pass / 0 fail；`bun run typecheck` 与 `git diff --check` 通过。
+- 最近完整验证：`bun test` 234 pass / 0 fail；`bun run typecheck` 与 `git diff --check` 通过。
 
 ## 已完成但未提交的功能
 
@@ -22,7 +22,14 @@
 - `OpenAICompatibleProvider` 支持 `currentModel`、`listModels()`、`loadModelCatalog()` 和 `selectModel()`。
 - Agnes 模型目录通过 `GET /v1/models` 获取；会过滤 image、video、embedding、audio、tts、whisper、moderation 等非聊天模型。
 - 已真实只读验证 Agnes 返回文本模型：`agnes-2.0-flash`、`agnes-2.5-flash`、`agnes-2.5-pro-alpha`、`agnes-2.5-pro`。
-- 切换只影响当前进程，重启后仍以 `AGENT_MODEL` 为初始模型。
+
+### 最后使用模型持久化
+
+- `ModelSelectionStore`（`src/model/selection-store.ts`）把最近一次切换的 `(provider, model)` 原子写入当前工作区 `.andi-agent/selection.json`（v1、严格校验、不含凭据）。
+- REPL 的所有切换路径（`/models` 选择、`/provider` 切换）通过 `createPersistingModelManager()` 包装 Router，切换成功即落盘，写失败不影响本次进程内切换。
+- 启动时 `applyPersistedModelSelection()` 恢复上次选择：先经 CatalogManager 读目录（磁盘缓存命中零联网），再校验模型仍可选；模型过期或目录不可用时安全回退默认。
+- 持久化选择优先于 `.env` 默认值：它代表最近一次交互式切换。曾实现 "AGENT_PROVIDER/AGENT_MODEL/MINIMAX_MODEL 显式设置优先"，但 Bun 自动加载 `.env` 且 `.env.example` 预置这些键，导致所有照抄示例配置的用户模型恢复被永久跳过（症状：Provider 恢复、模型停在构造默认如 M2.7），该优先级已移除；删除 `.andi-agent/selection.json` 即回到 `.env` 默认。
+- 恢复成功后 TUI 状态栏会立即刷新为恢复后的模型。
 
 ### OpenCode 风格 `/models` 选择器
 
@@ -68,7 +75,8 @@
 - `ModelProvider` 可提供实时 `getModelIdentity()`；`OpenAICompatibleProvider` 和 `ModelProviderRouter` 均已实现。
 - Agent 每轮请求前把当前 `Provider`/`Model` 作为权威 system context 注入，因此用户询问“你在使用哪款模型”时，答案跟随运行时切换，而不是沿用启动时配置。
 - 已移除 CLI/定时任务注入的旧静态 `modelName` 文本；此前它可能与运行时已切换的模型冲突（例如实际 M2.7 却残留 M2.2）。
-- 对明确的模型身份询问，Agent 现在直接基于实时身份本地回答，不调用模型生成，避免 MiniMax 使用自身固有认知回答成泛化的 `MiniMax-M2`。
+- 曾有关键词命中即本地返回身份的短路逻辑，因会劫持仅提及模型关键词的普通任务（如"这个数据模型里哪个字段正在使用"）已移除；身份询问现在一律走模型，由 system prompt 中的权威身份上下文作答。
+- 身份块声明对话历史中关于其他模型/Provider 的说法是切换前的过期快照，必须忽略；当历史 system prompt 中的身份与当前运行时身份不同（发生过 `/models` 或 `/provider` 切换）时，额外注入一条 "runtime model was switched" 说明，直接对冲历史里旧 assistant 声明，避免模型跟着历史自称旧模型。
 - 该身份不会写入 API Key、endpoint 或敏感凭据；只暴露 Provider ID 与模型 ID。
 
 ### MiniMax `<think>` 输出
@@ -88,7 +96,9 @@
 - `SkillManager` 实现 Agent Skills `SKILL.md` 的发现、YAML frontmatter 解析、元数据预加载、按任务自动匹配和显式 `/skill-name` 调用。
 - 兼容项目/用户级 `.agents/skills`、`.claude/skills`，并兼容旧 `.codex/skills`；同名技能按项目优先，避免用户配置覆盖仓库约定。
 - 支持 Claude 常用字段与模板：`$ARGUMENTS`、`${CLAUDE_SKILL_DIR}`、`disable-model-invocation`、`user-invocable`、`context`、`allowed-tools` 和 ``!`command` `` 动态上下文。
-- 动态上下文命令复用现有命令审批边界；无审批器时拒绝执行，不允许技能绕过 `run_command` 的安全策略。
+- 动态上下文命令只在显式 `/skill-name` 调用时经现有命令审批边界执行；自动匹配的技能不执行任何命令，只注入跳过说明。无审批器时拒绝执行，不允许技能绕过 `run_command` 的安全策略。
+- 正文里位于代码围栏或 `` ``…`` `` 行内代码中的 ``!`command` `` 是文档示例，不会被当作真实命令执行。
+- 技能评分对 ASCII 词元使用整词匹配，避免 "hi" 之类短词作为子串命中 "searching"/"third-party" 导致问候语误加载技能。
 - Agent system prompt 只预加载技能名称/描述，正文按需加载；REPL 增加 `/skills` 和 `/skill-name [args]`。
 
 ### TUI Markdown 表格
@@ -104,6 +114,7 @@
 - `src/model/openai-compatible.ts`：Provider 网络目录、过滤、超时、取消和脱敏。
 - `src/model/catalog-store.ts`：`.andi-agent/models.json` 存储。
 - `src/model/catalog-manager.ts`：缓存策略。
+- `src/model/selection-store.ts`：最后使用模型持久化、启动恢复与 REPL 切换包装。
 - `src/model/providers.ts`：Provider 默认配置、工厂和运行时路由器。
 - `src/agent.ts`：每轮动态注入当前模型身份。
 - `src/repl.ts`：`/models`、`/models refresh`、picker 接口、全局退出。
@@ -118,6 +129,7 @@
 - `test/skills.test.ts`：技能发现、优先级、自动匹配、显式调用和动态上下文测试。
 - `.agents/skills/skill-creator/SKILL.md`：用于创建和维护可跨 Claude Code/Codex 复用的项目 Skill。
 - `test/model-catalog.test.ts`：目录 Store/Manager 测试。
+- `test/model-selection.test.ts`：选择持久化、恢复优先级与回退测试。
 - `test/config.test.ts`、`test/repl.test.ts`、`test/tui.test.ts`、`test/agent.test.ts`：Provider 配置/切换、Ctrl-D 与当前模型身份回归测试。
 
 ## 工作区注意事项
