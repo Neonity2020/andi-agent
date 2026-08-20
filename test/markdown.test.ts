@@ -79,6 +79,20 @@ describe("renderMarkdown", () => {
     expect(output[0]).not.toContain("**");
   });
 
+  test("keeps wrapped blockquote text styling consistent around inline bold", () => {
+    const styled = createTheme(true);
+    const output = renderMarkdown(
+      "> **Me:** Hi! I'm Alex and I enjoy hiking and cooking.",
+      30,
+      styled,
+    );
+
+    expect(output[0]).toContain(`\x1b[2m│\x1b[0m`);
+    expect(output[1]).toContain(`\x1b[2m│\x1b[0m`);
+    expect(output[0]).not.toMatch(/\x1b\[2m│ \x1b\[1mMe:\x1b\[0m Hi/);
+    expect(output[1]).toBe(`\x1b[2m│\x1b[0m enjoy hiking and cooking.`);
+  });
+
   test("collapses repeated blank lines and trims edges", () => {
     expect(renderMarkdown("\n\na\n\n\nb\n\n", 20, theme)).toEqual(["a", "", "b"]);
   });

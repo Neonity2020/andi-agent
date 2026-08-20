@@ -75,7 +75,9 @@ export function renderMarkdown(text: string, width: number, theme: Theme): strin
       case "blockquote": {
         ensureBlockGap();
         for (const part of wrapText(token.text, Math.max(width - 2, 2))) {
-          output.push(theme.style.dim(`│ ${applyInline(part, theme)}`));
+          // Style only the quote marker so inline resets cannot change the
+          // color of the rest of a wrapped quote line.
+          output.push(`${theme.style.dim("│")} ${applyInline(part, theme)}`);
         }
         break;
       }
