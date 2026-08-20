@@ -59,7 +59,7 @@ describe("Agent", () => {
     const model = new ScriptedModel([loopingTurn, loopingTurn]);
     const agent = new Agent({ model, tools: new ToolRegistry(), maxTurns: 2 });
 
-    expect(agent.run("Loop")).rejects.toThrow("maximum of 2 turns");
+    expect(agent.run("Loop")).rejects.toThrow("最大轮数 2");
   });
 
   test("emits ordered runtime events and accepts prior history", async () => {
@@ -100,11 +100,12 @@ describe("Agent", () => {
     identity = { provider: "minimax", model: "MiniMax-M2.7" };
     await agent.run("continue the task now");
 
-    expect(requests[0]?.[0]?.content).toContain("Provider: agnes");
-    expect(requests[0]?.[0]?.content).toContain("Model: agnes-2.5-flash");
-    expect(requests[1]?.[0]?.content).toContain("Provider: minimax");
-    expect(requests[1]?.[0]?.content).toContain("Model: MiniMax-M2.7");
-    expect(requests[1]?.[0]?.content).not.toContain("currently running on:");
+    expect(requests[0]?.at(-1)?.content).toContain("Provider: agnes");
+    expect(requests[0]?.at(-1)?.content).toContain("Model: agnes-2.5-flash");
+    expect(requests[1]?.at(-1)?.content).toContain("Provider: minimax");
+    expect(requests[1]?.at(-1)?.content).toContain("Model: MiniMax-M2.7");
+    expect(requests[1]?.at(-1)?.content).not.toContain("currently running on:");
+    expect(requests[0]?.[0]?.content).toBe(requests[1]?.[0]?.content);
   });
 
   test("marks the runtime switch when history carries a stale identity", async () => {
@@ -112,7 +113,7 @@ describe("Agent", () => {
     const model: ModelProvider = {
       getModelIdentity: () => ({ provider: "minimax", model: "MiniMax-M2.7" }),
       async complete(messages) {
-        requests.push(String(messages[0]?.content ?? ""));
+        requests.push(messages.map((message) => String(message.content ?? "")).join("\n"));
         return { content: "ok", toolCalls: [] };
       },
     };
@@ -137,7 +138,7 @@ describe("Agent", () => {
     const model: ModelProvider = {
       getModelIdentity: () => ({ provider: "agnes", model: "agnes-2.5-flash" }),
       async complete(messages) {
-        requests.push(String(messages[0]?.content ?? ""));
+        requests.push(messages.map((message) => String(message.content ?? "")).join("\n"));
         return { content: "ok", toolCalls: [] };
       },
     };
@@ -168,8 +169,8 @@ describe("Agent", () => {
 
     expect(result.output).toContain("MiniMax-M2.7");
     expect(calls).toBe(1);
-    expect(requests[0]?.[0]?.content).toContain("Provider: minimax");
-    expect(requests[0]?.[0]?.content).toContain("Model: MiniMax-M2.7");
+    expect(requests[0]?.at(-1)?.content).toContain("Provider: minimax");
+    expect(requests[0]?.at(-1)?.content).toContain("Model: MiniMax-M2.7");
   });
 
   test("does not intercept ordinary tasks that merely mention model keywords", async () => {

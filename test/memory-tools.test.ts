@@ -23,14 +23,14 @@ async function setup(writable = true): Promise<ToolRegistry> {
 describe("memory tools", () => {
   test("registers four interactive tools and only two scheduled-safe tools", async () => {
     expect((await setup()).definitions().map((tool) => tool.name)).toEqual([
-      "memory_search",
+      "memory_archive",
       "memory_read",
       "memory_remember",
-      "memory_archive",
+      "memory_search",
     ]);
     expect((await setup(false)).definitions().map((tool) => tool.name)).toEqual([
-      "memory_search",
       "memory_read",
+      "memory_search",
     ]);
   });
 

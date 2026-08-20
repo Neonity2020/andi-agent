@@ -44,7 +44,7 @@ export function renderSealedTool(name: string, ok: boolean, durationMs: number, 
 }
 
 export function renderCancelledTool(name: string, theme: Theme): string {
-  return `${theme.style.dim(theme.symbols.dot)} ${theme.toolText(name)} ${theme.style.dim("cancelled")}`;
+  return `${theme.style.dim(theme.symbols.dot)} ${theme.toolText(name)} ${theme.style.dim("已取消")}`;
 }
 
 export interface ThinkTagResult {
@@ -167,8 +167,8 @@ export class ActivityState {
       const elapsed = this.#turnStartedAt === undefined
         ? ""
         : theme.style.dim(` ${theme.symbols.dot} ${formatDuration(now - this.#turnStartedAt)}`);
-      const size = this.#thinking.trim().length > 0 ? ` ${theme.symbols.dot} ${this.#thinking.trim().length} chars` : "";
-      lines.push(`${theme.brandText(spinnerFrame(now - (this.#turnStartedAt ?? now)))} ${theme.style.dim(`thinking (collapsed)${size}`)}${elapsed}`);
+      const size = this.#thinking.trim().length > 0 ? ` ${theme.symbols.dot} ${this.#thinking.trim().length} 字符` : "";
+      lines.push(`${theme.brandText(spinnerFrame(now - (this.#turnStartedAt ?? now)))} ${theme.style.dim(`思考（已折叠）${size}`)}${elapsed}`);
     }
 
     if (this.#phase === "thinking") {
@@ -176,7 +176,7 @@ export class ActivityState {
         this.#turnStartedAt === undefined
           ? ""
           : theme.style.dim(` ${theme.symbols.dot} ${formatDuration(now - this.#turnStartedAt)}`);
-      lines.push(`${theme.brandText(spinnerFrame(now - (this.#turnStartedAt ?? now)))} ${theme.style.dim("thinking")}${elapsed}`);
+      lines.push(`${theme.brandText(spinnerFrame(now - (this.#turnStartedAt ?? now)))} ${theme.style.dim("思考中")}${elapsed}`);
       return lines;
     }
 

@@ -205,7 +205,7 @@ describe("Tui", () => {
     expect(text).toContain("❯ 分析项目");
     expect(text).toContain("查看 关键 文件");
     expect(text).toContain("✓ read_file · 100ms");
-    expect(text).toContain("done → 1 turn(s)");
+    expect(text).toContain("完成 → 1 轮");
     expect(text).toContain("agnes-2.5-flash · test · /tmp/ws");
   });
 
@@ -235,7 +235,7 @@ describe("Tui", () => {
     tui.handleAgentEvent({ type: "model_text_delta", runId: "r", turn: 1, delta: "<think>private reasoning</think>visible answer" });
     tui.handleAgentEvent({ type: "model_completed", runId: "r", turn: 1, toolCallCount: 0, durationMs: 10 });
 
-    expect(output()).toContain("thinking (collapsed)");
+    expect(output()).toContain("思考（已折叠）");
     expect(output()).toContain("visible answer");
     expect(output()).not.toContain("private reasoning");
     expect(output()).not.toContain("<think>");
@@ -251,8 +251,8 @@ describe("Tui", () => {
     tui.handleAgentEvent({ type: "turn_started", runId: "r", turn: 1, messageCount: 2 });
     tui.handleAgentEvent({ type: "tool_started", runId: "r", turn: 1, toolCallId: "t1", toolName: "run_command" });
     tui.handleAgentEvent({ type: "agent_cancelled", runId: "r" });
-    expect(output()).toContain("· run_command cancelled");
-    expect(output()).toContain("turn cancelled");
+    expect(output()).toContain("· run_command 已取消");
+    expect(output()).toContain("当前轮次已取消");
   });
 
   test("shows memory recall metadata without exposing memory content", () => {

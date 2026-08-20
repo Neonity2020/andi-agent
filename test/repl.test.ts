@@ -79,11 +79,11 @@ describe("runRepl", () => {
 
     expect(calls).toBe(2);
     expect(history).toHaveLength(2);
-    expect(io.errors).toContain("[error] temporary failure");
+    expect(io.errors).toContain("[错误] temporary failure");
   });
 
-  test("supports status, clear, unknown commands, and EOF", async () => {
-    const io = scriptedIO(["/status", "/clear", "/status", "/unknown", null]);
+  test("supports status, new conversation, clear, unknown commands, and EOF", async () => {
+    const io = scriptedIO(["/status", "/new", "/status", "/unknown", null]);
     const saved: Message[][] = [];
     const agent: ReplAgent = {
       async runWithHistory(task, history = []) {
@@ -105,9 +105,34 @@ describe("runRepl", () => {
 
     expect(history).toEqual([]);
     expect(saved).toEqual([[]]);
-    expect(io.output).toContain("session: demo · model: unknown · state: idle · messages: 1");
-    expect(io.output).toContain("session: demo · model: unknown · state: idle · messages: 0");
-    expect(io.errors[0]).toContain("Unknown REPL command");
+    expect(io.output).toContain("会话：demo · 模型：未知 · 状态：空闲 · 消息：1");
+    expect(io.output).toContain("会话：demo · 模型：未知 · 状态：空闲 · 消息：0");
+    expect(io.output).toContain("新对话已开始。");
+    expect(io.errors[0]).toContain("未知 REPL 命令");
+  });
+
+  test("clears the current conversation with /clear", async () => {
+    const io = scriptedIO(["/clear", "/exit"]);
+    const saved: Message[][] = [];
+    const history = await runRepl({
+      agent: {
+        async runWithHistory(task, currentHistory = []) {
+          return appendResult(task, currentHistory);
+        },
+      },
+      io,
+      initialHistory: [{ role: "user", content: "old" }],
+      sessionId: "demo",
+      sessionStore: {
+        async save(_id, messages) {
+          saved.push([...messages]);
+        },
+      },
+    });
+
+    expect(history).toEqual([]);
+    expect(saved).toEqual([[]]);
+    expect(io.output).toContain("对话历史已清空。");
   });
 
   test("keeps running when session persistence fails", async () => {
@@ -132,7 +157,7 @@ describe("runRepl", () => {
     expect(history).toHaveLength(4);
     expect(io.output).toContain("answer: second");
     expect(io.errors).toHaveLength(2);
-    expect(io.errors[0]).toContain("Failed to save session");
+    expect(io.errors[0]).toContain("保存会话失败");
   });
 
   test("cancels the active turn on interrupt and keeps the REPL alive", async () => {
@@ -156,9 +181,9 @@ describe("runRepl", () => {
 
     await runRepl({ agent, io });
 
-    expect(io.errors).toContain("Cancelling current turn...");
-    expect(io.output).toContain("Turn cancelled.");
-    expect(io.output).toContain("REPL closed.");
+    expect(io.errors).toContain("正在取消当前轮次……");
+    expect(io.output).toContain("当前轮次已取消。");
+    expect(io.output).toContain("REPL 已关闭。");
   });
 
   test("exits when interrupted at the idle prompt", async () => {
@@ -191,7 +216,7 @@ describe("runRepl", () => {
 
     await runRepl({ agent, io });
 
-    expect(output).toContain("REPL closed.");
+    expect(output).toContain("REPL 已关闭。");
   });
 
   test("aborts an active turn and exits when the global exit binding fires", async () => {
@@ -220,7 +245,7 @@ describe("runRepl", () => {
     await runRepl({ agent, io });
 
     expect(closed).toBe(1);
-    expect(io.output).toContain("Turn cancelled.");
+    expect(io.output).toContain("当前轮次已取消。");
   });
 
   test("reports usage and manually repairs an incomplete tool call", async () => {
@@ -249,8 +274,8 @@ describe("runRepl", () => {
       ],
     });
 
-    expect(io.output).toContain("session: 12 input · 3 output · 15 total tokens · 2 request(s) · 25ms");
-    expect(io.output).toContain("Recovery complete · repaired 1 missing tool result(s).");
+    expect(io.output).toContain("当前会话：12 输入 · 3 输出 · 15 总 Token · 2 次请求 · 25ms");
+    expect(io.output).toContain("恢复完成 · 修复了 1 个缺失的工具结果。");
     expect(history[1]).toMatchObject({ role: "tool", toolCallId: "missing" });
   });
 
@@ -340,8 +365,8 @@ describe("runRepl", () => {
 
     expect(io.output).toContain("1. agnes-2.5-flash *");
     expect(io.output).toContain("2. agnes-2.5-pro");
-    expect(io.output).toContain("Switched model to agnes-2.5-pro.");
-    expect(io.output).toContain("session: demo · model: agnes-2.5-pro · state: idle · messages: 0");
+    expect(io.output).toContain("已切换模型：agnes-2.5-pro。");
+    expect(io.output).toContain("会话：demo · 模型：agnes-2.5-pro · 状态：空闲 · 消息：0");
     expect(selected).toEqual(["agnes-2.5-pro"]);
     expect(modelSeenByAgent).toEqual(["agnes-2.5-pro"]);
   });
@@ -379,7 +404,7 @@ describe("runRepl", () => {
       },
     });
 
-    expect(pickerTitle).toBe("Select model");
+    expect(pickerTitle).toBe("选择模型");
     expect(io.output).not.toContain("Available models · current: agnes-2.5-flash");
     expect(io.output).not.toContain("Switched model to agnes-2.5-pro.");
   });
@@ -472,8 +497,8 @@ describe("runRepl", () => {
     await runRepl({ agent, io, models });
 
     expect(io.output).toContain("agnes *");
-    expect(io.output).toContain("Switched provider to minimax · model: MiniMax-M2.7.");
-    expect(io.output.some((line) => line.includes("session: memory-only · model: minimax/MiniMax-M2.7"))).toBeTrue();
+    expect(io.output).toContain("已切换 Provider：minimax · 模型：MiniMax-M2.7。");
+    expect(io.output.some((line) => line.includes("会话：仅内存 · 模型：minimax/MiniMax-M2.7"))).toBeTrue();
   });
 
   test("keeps the current model after cancellation, invalid input, or list failure", async () => {
@@ -497,8 +522,8 @@ describe("runRepl", () => {
     await runRepl({ agent, io: cancelled, models });
 
     expect(selections).toBe(0);
-    expect(cancelled.output).toContain("Model selection cancelled.");
-    expect(cancelled.errors).toContain("Invalid model selection: 99");
+    expect(cancelled.output).toContain("已取消模型选择。");
+    expect(cancelled.errors).toContain("无效的模型选择：99");
 
     const failed = scriptedIO(["/models", "/exit"]);
     await runRepl({
@@ -512,7 +537,7 @@ describe("runRepl", () => {
         selectModel() {},
       },
     });
-    expect(failed.errors).toContain("[error] catalog unavailable");
+    expect(failed.errors).toContain("[错误] catalog unavailable");
   });
 
   test("cancels an active model-list request without exiting the REPL", async () => {
@@ -546,9 +571,9 @@ describe("runRepl", () => {
       },
     });
 
-    expect(io.errors).toContain("Cancelling current turn...");
-    expect(io.output).toContain("Model listing cancelled.");
-    expect(io.output).toContain("REPL closed.");
+    expect(io.errors).toContain("正在取消当前轮次……");
+    expect(io.output).toContain("模型列表加载已取消。");
+    expect(io.output).toContain("REPL 已关闭。");
   });
 });
 

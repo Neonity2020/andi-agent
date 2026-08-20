@@ -27,6 +27,10 @@ export interface TokenUsage {
   inputTokens: number;
   outputTokens: number;
   totalTokens: number;
+  /** Provider-reported input tokens served from the prompt cache. */
+  cachedInputTokens?: number;
+  /** Provider-reported input tokens written into the prompt cache. */
+  cacheCreationInputTokens?: number;
 }
 
 export interface RunUsage extends TokenUsage {

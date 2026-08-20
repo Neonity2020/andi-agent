@@ -36,8 +36,8 @@ describe("schedule CLI", () => {
       log.mockRestore();
     }
 
-    expect(output[0]).toContain("Scheduled 'future-check'");
+    expect(output[0]).toContain("已创建定时任务“future-check”");
     expect(output[1]).toContain("future-check\tenabled");
-    expect(output[2]).toBe("Removed scheduled task 'future-check'.");
+    expect(output[2]).toBe("已删除定时任务“future-check”。");
   });
 });

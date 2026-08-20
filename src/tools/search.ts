@@ -78,13 +78,13 @@ export async function searchCode(
 export function createSearchTool(cwd: string): Tool {
   return {
     name: "search_code",
-    description: "Search workspace source text with ripgrep. Results exclude Git metadata, dependencies, and agent sessions.",
+    description: "使用 ripgrep 搜索工作区源代码文本。结果排除 Git 元数据、依赖和 Agent 会话。",
     parameters: {
       type: "object",
       properties: {
-        query: { type: "string", description: "Text or regular expression to search for" },
+        query: { type: "string", description: "要搜索的文本或正则表达式" },
         regex: { type: "boolean", default: false },
-        glob: { type: "string", description: "Optional file glob such as '*.ts'" },
+        glob: { type: "string", description: "可选的文件 glob，例如 '*.ts'" },
         max_results: { type: "integer", minimum: 1, maximum: 500, default: 100 },
       },
       required: ["query"],

@@ -142,10 +142,10 @@ export function createWorkspaceTools(workspace: Workspace): Tool[] {
   return [
     {
       name: "read_file",
-      description: "Read a UTF-8 text file inside the workspace.",
+      description: "读取工作区内的 UTF-8 文本文件。",
       parameters: {
         type: "object",
-        properties: { path: { type: "string", description: "Workspace-relative file path" } },
+          properties: { path: { type: "string", description: "相对于工作区的文件路径" } },
         required: ["path"],
         additionalProperties: false,
       },
@@ -159,10 +159,10 @@ export function createWorkspaceTools(workspace: Workspace): Tool[] {
     },
     {
       name: "list_files",
-      description: "Recursively list files inside a workspace directory (up to 200 results).",
+      description: "递归列出工作区目录中的文件（最多 200 条）。",
       parameters: {
         type: "object",
-        properties: { path: { type: "string", description: "Directory path; defaults to '.'" } },
+          properties: { path: { type: "string", description: "目录路径，默认为 '.'" } },
         additionalProperties: false,
       },
       async execute(input: unknown, context) {
@@ -175,12 +175,12 @@ export function createWorkspaceTools(workspace: Workspace): Tool[] {
     },
     {
       name: "write_file",
-      description: "Create or replace a UTF-8 text file inside the workspace.",
+      description: "在工作区内创建或覆盖 UTF-8 文本文件。",
       parameters: {
         type: "object",
         properties: {
-          path: { type: "string", description: "Workspace-relative file path" },
-          content: { type: "string", description: "Complete new file content" },
+          path: { type: "string", description: "相对于工作区的文件路径" },
+          content: { type: "string", description: "完整的新文件内容" },
         },
         required: ["path", "content"],
         additionalProperties: false,

@@ -27,7 +27,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
   const provider = (requestedProvider ||
     (env.AGNES_API_KEY?.trim() || env.AGENT_API_KEY?.trim() ? "agnes" : "minimax")) as AgentProvider;
   if (provider !== "agnes" && provider !== "minimax") {
-    throw new Error("AGENT_PROVIDER must be 'agnes' or 'minimax'");
+    throw new Error("AGENT_PROVIDER 必须是 'agnes' 或 'minimax'");
   }
   const agnesApiKey = env.AGNES_API_KEY?.trim() || (provider === "agnes" ? env.AGENT_API_KEY?.trim() : "") || "";
   const minimaxApiKey =
@@ -35,18 +35,18 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
   const apiKey = provider === "minimax" ? minimaxApiKey : agnesApiKey;
   if (apiKey.length === 0) {
     throw new Error(
-      `Missing ${provider === "minimax" ? "MINIMAX_API_KEY" : "AGNES_API_KEY"}. Copy .env.example to .env and set it.`,
+      `缺少 ${provider === "minimax" ? "MINIMAX_API_KEY" : "AGNES_API_KEY"}。请复制 .env.example 为 .env 并填写。`,
     );
   }
 
   const maxTurns = Number(env.AGENT_MAX_TURNS ?? "12");
   if (!Number.isInteger(maxTurns) || maxTurns < 1) {
-    throw new Error("AGENT_MAX_TURNS must be a positive integer");
+    throw new Error("AGENT_MAX_TURNS 必须是正整数");
   }
 
   const maxContextChars = Number(env.AGENT_MAX_CONTEXT_CHARS ?? "120000");
   if (!Number.isInteger(maxContextChars) || maxContextChars < 1) {
-    throw new Error("AGENT_MAX_CONTEXT_CHARS must be a positive integer");
+    throw new Error("AGENT_MAX_CONTEXT_CHARS 必须是正整数");
   }
 
   const exaApiKey = env.EXA_API_KEY?.trim();

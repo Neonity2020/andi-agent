@@ -96,24 +96,25 @@ export interface ReplCommand {
 // Single source of truth for slash commands: /help output and the TUI's
 // inline completion list both derive from it.
 export const REPL_COMMANDS: readonly ReplCommand[] = [
-  { name: "/help", description: "Show REPL commands" },
-  { name: "/status", description: "Show session, run, and history status" },
-  { name: "/usage", description: "Show token and model timing totals" },
-  { name: "/recover", description: "Repair incomplete tool-call history" },
-  { name: "/clear", description: "Clear in-memory and persisted conversation history" },
-  { name: "/memory", description: "List durable workspace memories" },
-  { name: "/memory search", description: "Search durable workspace memories" },
-  { name: "/memory show", description: "Show one durable workspace memory" },
-  { name: "/models", description: "Select a cached Chat Completions model" },
-  { name: "/models refresh", description: "Refresh the current provider's model cache" },
-  { name: "/provider", description: "Show or switch model providers" },
-  { name: "/skills", description: "List discovered skills" },
-  { name: "/exit", description: "Exit the REPL" },
+  { name: "/help", description: "显示 REPL 命令" },
+  { name: "/status", description: "显示会话、运行和历史状态" },
+  { name: "/usage", description: "显示 Token 和模型耗时统计" },
+  { name: "/recover", description: "修复不完整的工具调用历史" },
+  { name: "/new", description: "开启新对话" },
+  { name: "/clear", description: "清空内存和持久化对话历史" },
+  { name: "/memory", description: "列出工作区长期记忆" },
+  { name: "/memory search", description: "搜索工作区长期记忆" },
+  { name: "/memory show", description: "查看一条工作区长期记忆" },
+  { name: "/models", description: "选择已缓存的 Chat Completions 模型" },
+  { name: "/models refresh", description: "刷新当前 Provider 的模型目录" },
+  { name: "/provider", description: "查看或切换模型 Provider" },
+  { name: "/skills", description: "列出已发现的技能" },
+  { name: "/exit", description: "退出 REPL" },
 ];
 
 const REPL_HELP = `${REPL_COMMANDS.map((command) => `${command.name.padEnd(24)}${command.description}`).join("\n")}
-/<skill-name> [args]     Invoke a skill explicitly
-Ctrl-D    Exit immediately from any TUI state`;
+/<skill-name> [参数]      显式调用技能
+Ctrl-D                    在任何 TUI 状态下立即退出`;
 
 export async function runRepl(options: ReplOptions): Promise<Message[]> {
   let history = [...(options.initialHistory ?? [])];
@@ -123,12 +124,12 @@ export async function runRepl(options: ReplOptions): Promise<Message[]> {
   let activeController: AbortController | undefined;
   let activeRunId: string | undefined;
   let exitRequested = false;
-  options.io.write(`andi-agent REPL · session: ${options.sessionId ?? "memory-only"}`);
-  options.io.write("Type /help for commands.");
+  options.io.write(`andi-agent REPL · 会话：${options.sessionId ?? "仅内存"}`);
+  options.io.write("输入 /help 查看命令。");
 
   options.io.onInterrupt?.(() => {
     if (activeController && !activeController.signal.aborted) {
-      options.io.error("Cancelling current turn...");
+      options.io.error("正在取消当前轮次……");
       activeController.abort(new Error("Cancelled by user"));
       return;
     }
@@ -161,7 +162,7 @@ export async function runRepl(options: ReplOptions): Promise<Message[]> {
         await options.sessionStore.save(options.sessionId, history);
       }
     } catch (error) {
-      options.io.error(`[error] Failed to save session: ${error instanceof Error ? error.message : String(error)}`);
+      options.io.error(`[错误] 保存会话失败：${error instanceof Error ? error.message : String(error)}`);
     }
   };
 
@@ -180,41 +181,41 @@ export async function runRepl(options: ReplOptions): Promise<Message[]> {
       }
       if (task === "/status") {
         options.io.write(
-          `session: ${options.sessionId ?? "memory-only"} · model: ${options.models?.currentProvider ? `${options.models.currentProvider}/` : ""}${options.models?.currentModel ?? "unknown"} · state: ${activeController ? "running" : "idle"} · messages: ${history.length}`,
+          `会话：${options.sessionId ?? "仅内存"} · 模型：${options.models?.currentProvider ? `${options.models.currentProvider}/` : ""}${options.models?.currentModel ?? "未知"} · 状态：${activeController ? "运行中" : "空闲"} · 消息：${history.length}`,
         );
         continue;
       }
       if (task === "/usage") {
-        options.io.write(`last run: ${formatUsage(lastRunUsage)}`);
-        options.io.write(`session: ${formatUsage(sessionUsage)}`);
+        options.io.write(`最近一轮：${formatUsage(lastRunUsage)}`);
+        options.io.write(`当前会话：${formatUsage(sessionUsage)}`);
         continue;
       }
       if (task === "/recover") {
         const repaired = repairIncompleteToolCalls(history);
         history = repaired.messages;
         await persistHistory();
-        options.io.write(`Recovery complete · repaired ${repaired.repairedToolResults} missing tool result(s).`);
+        options.io.write(`恢复完成 · 修复了 ${repaired.repairedToolResults} 个缺失的工具结果。`);
         continue;
       }
-      if (task === "/clear") {
+      if (task === "/new" || task === "/clear") {
         history = [];
         sessionUsage = emptyRunUsage();
         lastRunUsage = emptyRunUsage();
         await persistHistory();
-        options.io.write("Conversation history cleared.");
+        options.io.write(task === "/new" ? "新对话已开始。" : "对话历史已清空。");
         continue;
       }
       if (task === "/skills") {
         if (!options.skills) {
-          options.io.error("Skills are unavailable.");
+          options.io.error("技能不可用。");
           continue;
         }
         const skills = options.skills.list();
-        if (skills.length === 0) options.io.write("No skills discovered.");
+        if (skills.length === 0) options.io.write("未发现任何技能。");
         else {
           for (const skill of skills) {
-            const invocation = skill.userInvocable ? `/${skill.name}` : "(model only)";
-            options.io.write(`${invocation}\t${skill.description} · ${skill.source}`);
+            const invocation = skill.userInvocable ? `/${skill.name}` : "（仅模型可调用）";
+            options.io.write(`${invocation}\t${skill.description} · 来源：${skill.source === "project" ? "项目" : "用户"}`);
           }
         }
         for (const issue of options.skills.issues?.() ?? []) {
@@ -224,14 +225,14 @@ export async function runRepl(options: ReplOptions): Promise<Message[]> {
       }
       if (task === "/models" || task === "/models refresh") {
         if (!options.models) {
-          options.io.error("Model switching is unavailable.");
+          options.io.error("模型切换不可用。");
           continue;
         }
         const modelManager = options.models;
         const refresh = task === "/models refresh";
         const refreshModels = modelManager.refreshModels;
         if (refresh && !refreshModels) {
-          options.io.error("Model catalog refresh is unavailable.");
+          options.io.error("模型目录刷新不可用。");
           continue;
         }
         const listController = new AbortController();
@@ -248,8 +249,8 @@ export async function runRepl(options: ReplOptions): Promise<Message[]> {
               : await modelManager.listModels.call(modelManager, listController.signal);
           }
         } catch (error) {
-          if (isCancellationError(error)) options.io.write("Model listing cancelled.");
-          else options.io.error(`[error] ${error instanceof Error ? error.message : String(error)}`);
+            if (isCancellationError(error)) options.io.write("模型列表加载已取消。");
+            else options.io.error(`[错误] ${error instanceof Error ? error.message : String(error)}`);
           continue;
         } finally {
           if (activeController === listController) activeController = undefined;
@@ -260,7 +261,7 @@ export async function runRepl(options: ReplOptions): Promise<Message[]> {
           const usesPicker = picker !== undefined;
           if (picker) {
             selection = await picker.call(options.io, {
-              title: "Select model",
+              title: "选择模型",
               items: models.map((model) => ({
                 value: qualifiedModels ? `${(model as ReplQualifiedModel).provider}/${model.id}` : model.id,
                 label: qualifiedModels ? `${(model as ReplQualifiedModel).provider}/${model.id}` : model.id,
@@ -271,7 +272,7 @@ export async function runRepl(options: ReplOptions): Promise<Message[]> {
                 : modelManager.currentModel,
             });
           } else {
-            options.io.write(`Available models · current: ${modelManager.currentModel}`);
+            options.io.write(`可用模型 · 当前：${modelManager.currentModel}`);
             models.forEach((model, index) => {
               const value = qualifiedModels ? `${(model as ReplQualifiedModel).provider}/${model.id}` : model.id;
               const current = value === (qualifiedModels
@@ -281,7 +282,7 @@ export async function runRepl(options: ReplOptions): Promise<Message[]> {
                 : "";
               options.io.write(`${index + 1}. ${value}${current}`);
             });
-            selection = await options.io.read("model> ");
+             selection = await options.io.read("模型> ");
           }
           if (selection === null) {
             if (!options.io.select) exitRequested = true;
@@ -289,7 +290,7 @@ export async function runRepl(options: ReplOptions): Promise<Message[]> {
           }
           const value = selection.trim();
           if (value.length === 0) {
-            options.io.write("Model selection cancelled.");
+            options.io.write("已取消模型选择。");
             continue;
           }
           const selected = qualifiedModels
@@ -301,20 +302,20 @@ export async function runRepl(options: ReplOptions): Promise<Message[]> {
             ? models.find((model) => model.id === value)?.id
             : resolveModelSelection(value, models));
           if (!selectedId || (qualifiedModels && !selected)) {
-            options.io.error(`Invalid model selection: ${value}`);
+            options.io.error(`无效的模型选择：${value}`);
             continue;
           }
           if (qualifiedModels && modelManager.selectQualifiedModel && selected) {
             await modelManager.selectQualifiedModel(selected.provider, selectedId);
             options.onModelChanged?.(selectedId);
-            if (!usesPicker) options.io.write(`Switched model to ${selected.provider}/${selectedId}.`);
+            if (!usesPicker) options.io.write(`已切换模型：${selected.provider}/${selectedId}。`);
           } else {
             await modelManager.selectModel(selectedId);
             options.onModelChanged?.(selectedId);
-            if (!usesPicker) options.io.write(`Switched model to ${selectedId}.`);
+            if (!usesPicker) options.io.write(`已切换模型：${selectedId}。`);
           }
         } catch (error) {
-          options.io.error(`[error] ${error instanceof Error ? error.message : String(error)}`);
+          options.io.error(`[错误] ${error instanceof Error ? error.message : String(error)}`);
         }
         continue;
       }
@@ -322,75 +323,75 @@ export async function runRepl(options: ReplOptions): Promise<Message[]> {
         const providerManager = options.models;
         const providers = providerManager?.availableProviders?.() ?? [];
         if (!providerManager?.selectProvider || providers.length === 0) {
-          options.io.error("Provider switching is unavailable.");
+          options.io.error("Provider 切换不可用。");
           continue;
         }
         const requested = task.slice("/provider".length).trim();
         if (!requested) {
-          options.io.write(`Providers · current: ${providerManager.currentProvider ?? "unknown"}`);
+          options.io.write(`Provider · 当前：${providerManager.currentProvider ?? "未知"}`);
           providers.forEach((provider) => options.io.write(`${provider}${provider === providerManager.currentProvider ? " *" : ""}`));
           continue;
         }
         if (!providers.includes(requested as AgentProvider)) {
-          options.io.error(`Provider '${requested}' is not configured.`);
+          options.io.error(`Provider“${requested}”未配置。`);
           continue;
         }
         try {
           await providerManager.selectProvider(requested as AgentProvider);
           options.onModelChanged?.(providerManager.currentModel);
-          options.io.write(`Switched provider to ${requested} · model: ${providerManager.currentModel}.`);
+          options.io.write(`已切换 Provider：${requested} · 模型：${providerManager.currentModel}。`);
         } catch (error) {
-          options.io.error(`[error] ${error instanceof Error ? error.message : String(error)}`);
+          options.io.error(`[错误] ${error instanceof Error ? error.message : String(error)}`);
         }
         continue;
       }
       if (task === "/memory" || task === "/memory list") {
         if (!options.memory) {
-          options.io.error("Long-term memory is unavailable.");
+          options.io.error("长期记忆不可用。");
           continue;
         }
         try {
           const memories = await options.memory.list();
-          if (memories.length === 0) options.io.write("No long-term memories.");
+          if (memories.length === 0) options.io.write("暂无长期记忆。");
           else {
             for (const memory of memories) {
               options.io.write(`${memory.id}\t${memory.title}\t${memory.tags.join(", ") || "no tags"}`);
             }
           }
         } catch (error) {
-          options.io.error(`[error] ${error instanceof Error ? error.message : String(error)}`);
+          options.io.error(`[错误] ${error instanceof Error ? error.message : String(error)}`);
         }
         continue;
       }
       if (task.startsWith("/memory search ")) {
         if (!options.memory) {
-          options.io.error("Long-term memory is unavailable.");
+          options.io.error("长期记忆不可用。");
           continue;
         }
         try {
           const query = task.slice("/memory search ".length).trim();
           const matches = await options.memory.search(query, 10);
-          if (matches.length === 0) options.io.write("No matching memories.");
+          if (matches.length === 0) options.io.write("没有匹配的记忆。");
           else {
             for (const match of matches) {
               options.io.write(`${match.id}\t${match.score.toFixed(2)}\t${match.title}\n${match.snippet}`);
             }
           }
         } catch (error) {
-          options.io.error(`[error] ${error instanceof Error ? error.message : String(error)}`);
+          options.io.error(`[错误] ${error instanceof Error ? error.message : String(error)}`);
         }
         continue;
       }
       if (task.startsWith("/memory show ")) {
         if (!options.memory) {
-          options.io.error("Long-term memory is unavailable.");
+          options.io.error("长期记忆不可用。");
           continue;
         }
         try {
           const memory = await options.memory.read(task.slice("/memory show ".length).trim());
           options.io.write(`# ${memory.title}\n\n${memory.content}`);
         } catch (error) {
-          options.io.error(`[error] ${error instanceof Error ? error.message : String(error)}`);
+          options.io.error(`[错误] ${error instanceof Error ? error.message : String(error)}`);
         }
         continue;
       }
@@ -399,7 +400,7 @@ export async function runRepl(options: ReplOptions): Promise<Message[]> {
         pendingTask = invocation.prompt;
         continue;
       }
-      options.io.error(`Unknown REPL command: ${task}. Type /help for commands.`);
+      options.io.error(`未知 REPL 命令：${task}。输入 /help 查看命令。`);
       continue;
     }
 
@@ -423,7 +424,7 @@ export async function runRepl(options: ReplOptions): Promise<Message[]> {
             );
           } catch (error) {
             options.io.error(
-              `[error] Failed to save checkpoint: ${error instanceof Error ? error.message : String(error)}`,
+              `[错误] 保存检查点失败：${error instanceof Error ? error.message : String(error)}`,
             );
           }
         },
@@ -436,15 +437,15 @@ export async function runRepl(options: ReplOptions): Promise<Message[]> {
       await persistHistory();
     } catch (error) {
       options.onError?.();
-      if (isCancellationError(error)) options.io.write("Turn cancelled.");
-      else options.io.error(`[error] ${error instanceof Error ? error.message : String(error)}`);
+      if (isCancellationError(error)) options.io.write("当前轮次已取消。");
+      else options.io.error(`[错误] ${error instanceof Error ? error.message : String(error)}`);
     } finally {
       activeController = undefined;
       activeRunId = undefined;
     }
   }
 
-  options.io.write("REPL closed.");
+  options.io.write("REPL 已关闭。");
   return history;
 }
 
@@ -457,5 +458,6 @@ export function resolveModelSelection(
 }
 
 function formatUsage(usage: RunUsage): string {
-  return `${usage.inputTokens} input · ${usage.outputTokens} output · ${usage.totalTokens} total tokens · ${usage.modelRequests} request(s) · ${usage.modelDurationMs}ms`;
+  const cache = usage.cachedInputTokens ? ` · 缓存命中 ${usage.cachedInputTokens} Token` : "";
+  return `${usage.inputTokens} 输入 · ${usage.outputTokens} 输出 · ${usage.totalTokens} 总 Token · ${usage.modelRequests} 次请求 · ${usage.modelDurationMs}ms${cache}`;
 }

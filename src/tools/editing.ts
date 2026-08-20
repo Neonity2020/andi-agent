@@ -7,13 +7,13 @@ export function createEditTool(workspace: Workspace): Tool {
   return {
     name: "edit_file",
     description:
-      "Replace one exact, unique text block in an existing workspace file. Read the file first and include enough surrounding text to make old_text unique.",
+      "替换工作区现有文件中唯一匹配的精确文本块。请先读取文件，并提供足够的上下文确保 old_text 只出现一次。",
     parameters: {
       type: "object",
       properties: {
-        path: { type: "string", description: "Workspace-relative file path" },
-        old_text: { type: "string", description: "Exact text that must occur exactly once" },
-        new_text: { type: "string", description: "Replacement text" },
+        path: { type: "string", description: "相对于工作区的文件路径" },
+        old_text: { type: "string", description: "必须恰好出现一次的原文本" },
+        new_text: { type: "string", description: "替换后的文本" },
       },
       required: ["path", "old_text", "new_text"],
       additionalProperties: false,

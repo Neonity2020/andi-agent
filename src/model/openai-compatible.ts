@@ -82,7 +82,32 @@ function parseUsage(value: unknown): TokenUsage | undefined {
   ) {
     return undefined;
   }
-  return { inputTokens, outputTokens, totalTokens };
+  const details = isRecord(usage.prompt_tokens_details)
+    ? usage.prompt_tokens_details
+    : isRecord(usage.input_tokens_details)
+      ? usage.input_tokens_details
+      : undefined;
+  const cachedInputTokens = firstNumber(
+    usage.cached_tokens,
+    usage.cache_read_input_tokens,
+    details?.cached_tokens,
+    details?.cache_read_input_tokens,
+  );
+  const cacheCreationInputTokens = firstNumber(
+    usage.cache_creation_input_tokens,
+    details?.cache_creation_input_tokens,
+  );
+  return {
+    inputTokens,
+    outputTokens,
+    totalTokens,
+    ...(cachedInputTokens === undefined ? {} : { cachedInputTokens }),
+    ...(cacheCreationInputTokens === undefined ? {} : { cacheCreationInputTokens }),
+  };
+}
+
+function firstNumber(...values: unknown[]): number | undefined {
+  return values.find((value): value is number => typeof value === "number" && Number.isFinite(value));
 }
 
 async function parseStreamingResponse(

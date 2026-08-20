@@ -45,6 +45,10 @@ EXA_BASE_URL=https://api.exa.ai
 
 未配置 Exa Key 时工具不会注册，其他功能不受影响。工具支持查询、1–10 条结果以及可选域名过滤，并返回标题、URL、发布日期、作者和高亮摘要。外部网页内容会作为不可信数据处理；Agent 应忽略网页中的指令，并在答案中引用结果 URL。API 协议依据 [Exa Search API 官方文档](https://exa.ai/docs/reference/search)。
 
+### Prompt 缓存
+
+Agent 会尽量保持系统提示词和工具定义的稳定顺序，把 Memory、Skill 正文、当前任务和工具结果放在动态上下文中，以便兼容的模型 Provider 复用 Prompt 前缀缓存。Provider 返回缓存 Token usage 时，`/usage` 和运行日志会显示缓存命中数量。实际缓存能力和 TTL 由当前 Provider 决定；OpenAI-compatible 接口未必支持统一的显式缓存参数。
+
 ### Weather
 
 Agent 默认提供 `weather` 工具，通过 Open-Meteo 查询城市当前天气和未来三天预报，不需要额外 API Key。调用时传入中文或英文城市名，例如 `{"city":"北京"}`。
@@ -135,6 +139,7 @@ REPL 会复用同一个 Agent、工具和审批终端。消息、模型回复和
 - `/help`：显示帮助；
 - `/status`：显示 session、当前模型和消息数量；
 - `/usage`：显示最近一轮及当前 session 的 token 和模型耗时；
+- `/new`：清空当前对话并开始一个新对话；
 - `/models`：从本地模型目录打开 TUI 下拉菜单并搜索、切换；
 - `/models refresh`：从当前 Provider 强制刷新模型目录；
 - `/recover`：补齐中断留下的缺失 tool result；

@@ -66,7 +66,7 @@ export function createGitTools(workspace: Workspace, options: GitToolOptions = {
   return [
     {
       name: "git_status",
-      description: "Show the concise Git working tree status without modifying it.",
+      description: "查看简洁的 Git 工作区状态，不修改任何内容。",
       parameters: { type: "object", properties: {}, additionalProperties: false },
       async execute(input: unknown, context) {
         requireRecord(input);
@@ -75,12 +75,12 @@ export function createGitTools(workspace: Workspace, options: GitToolOptions = {
     },
     {
       name: "git_diff",
-      description: "Show a safe Git diff for the working tree or staged changes.",
+      description: "查看工作区或已暂存改动的安全 Git diff。",
       parameters: {
         type: "object",
         properties: {
           staged: { type: "boolean", default: false },
-          paths: { type: "array", items: { type: "string" }, description: "Optional explicit paths" },
+          paths: { type: "array", items: { type: "string" }, description: "可选的明确文件路径" },
         },
         additionalProperties: false,
       },
@@ -97,7 +97,7 @@ export function createGitTools(workspace: Workspace, options: GitToolOptions = {
     },
     {
       name: "git_stage",
-      description: "Stage explicitly listed workspace files after user approval.",
+      description: "在用户批准后暂存明确列出的工作区文件。",
       parameters: {
         type: "object",
         properties: { paths: { type: "array", items: { type: "string" } } },
@@ -122,7 +122,7 @@ export function createGitTools(workspace: Workspace, options: GitToolOptions = {
     },
     {
       name: "git_commit",
-      description: "Commit only the currently staged changes after user approval. Does not push.",
+      description: "在用户批准后仅提交当前已暂存的改动，不执行 push。",
       parameters: {
         type: "object",
         properties: { message: { type: "string", minLength: 1, maxLength: 200 } },

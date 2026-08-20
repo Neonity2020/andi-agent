@@ -15,15 +15,15 @@ export function createSchedulerTools(store: ScheduleStore, options: SchedulerToo
     {
       name: "schedule_add",
       description:
-        "Create a local scheduled task only when the user explicitly asks. Provide exactly one of 'at' (zoned ISO 8601) or 'every' (for example 15m or 24h). Never guess a missing timezone.",
+         "仅在用户明确要求时创建本地定时任务。必须在 'at'（带时区的 ISO 8601）或 'every'（例如 15m、24h）中二选一。不要猜测缺失的时区。",
       parameters: {
         type: "object",
         properties: {
-          id: { type: "string", description: "Stable task ID using letters, numbers, underscores, or hyphens" },
-          task: { type: "string", description: "Complete prompt that the scheduled coding agent will execute" },
-          at: { type: "string", description: "One-time ISO 8601 timestamp with Z or an explicit timezone offset" },
-          every: { type: "string", description: "Fixed interval such as 10s, 15m, 2h, or 1d" },
-          session_id: { type: "string", description: "Optional persistent session ID" },
+          id: { type: "string", description: "由字母、数字、下划线或连字符组成的稳定任务 ID" },
+          task: { type: "string", description: "定时 Coding Agent 将执行的完整任务提示" },
+          at: { type: "string", description: "带 Z 或明确时区偏移的一次性 ISO 8601 时间戳" },
+          every: { type: "string", description: "固定间隔，例如 10s、15m、2h 或 1d" },
+          session_id: { type: "string", description: "可选的持久会话 ID" },
         },
         required: ["id", "task"],
         additionalProperties: false,
@@ -51,7 +51,7 @@ export function createSchedulerTools(store: ScheduleStore, options: SchedulerToo
     },
     {
       name: "schedule_list",
-      description: "List local scheduled tasks, including prompts, schedules, sessions, next runs, and recent status.",
+      description: "列出本地定时任务，包括提示、计划、会话、下次运行时间和最近状态。",
       parameters: { type: "object", properties: {}, additionalProperties: false },
       async execute(input: unknown, context) {
         throwIfAborted(context?.signal);
@@ -61,10 +61,10 @@ export function createSchedulerTools(store: ScheduleStore, options: SchedulerToo
     },
     {
       name: "schedule_remove",
-      description: "Remove a local scheduled task only when the user explicitly asks to delete it.",
+      description: "仅在用户明确要求删除时移除本地定时任务。",
       parameters: {
         type: "object",
-        properties: { id: { type: "string", description: "Scheduled task ID" } },
+        properties: { id: { type: "string", description: "定时任务 ID" } },
         required: ["id"],
         additionalProperties: false,
       },
@@ -78,7 +78,7 @@ export function createSchedulerTools(store: ScheduleStore, options: SchedulerToo
     {
       name: "schedule_run",
       description:
-        "Immediately run an existing scheduled task only when the user explicitly requests it. The run is non-interactive and cannot approve unsafe commands or Git writes.",
+         "仅在用户明确要求时立即运行已有定时任务。运行过程不可交互，不能批准不安全命令或 Git 写入。",
       parameters: {
         type: "object",
         properties: { id: { type: "string", description: "Scheduled task ID" } },

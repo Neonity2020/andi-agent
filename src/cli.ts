@@ -32,37 +32,37 @@ import { MemoryStore } from "./memory/store";
 import { createMemoryTools } from "./tools/memory";
 import { SkillManager } from "./skills/manager";
 
-const HELP = `andi-agent - a minimal Bun + TypeScript coding agent
+const HELP = `andi-agent - 基于 Bun + TypeScript 的轻量 Coding Agent
 
-Usage:
-  andi                               start a REPL in the current workspace
-  bun run src/cli.ts [--cwd PATH] [--session ID] [--approval ask|never] <task>
-  bun run src/cli.ts --repl [--cwd PATH] [--session ID] [initial task]
-  bun run src/cli.ts schedule add ID (--at TIME | --every DURATION) [--session ID] -- <task>
+用法：
+  andi                               在当前工作区启动 REPL
+  bun run src/cli.ts [--cwd 路径] [--session 会话ID] [--approval ask|never] <任务>
+  bun run src/cli.ts --repl [--cwd 路径] [--session 会话ID] [初始任务]
+  bun run src/cli.ts schedule add ID (--at 时间 | --every 间隔) [--session 会话ID] -- <任务>
   bun run src/cli.ts schedule list
   bun run src/cli.ts schedule remove ID
   bun run src/cli.ts schedule run ID
-  bun run src/cli.ts scheduler [--cwd PATH] [--poll DURATION]
+  bun run src/cli.ts scheduler [--cwd 路径] [--poll 间隔]
 
-Options:
-  --cwd PATH          Workspace root (default: current directory)
-  --session ID        Load and save a local conversation session (REPL default: default)
-  --approval MODE     Command approval mode: ask (default) or never
-  --repl              Start a persistent interactive session (TUI by default)
-  --plain             Use the classic readline REPL instead of the TUI
-  --log-events        Write sanitized run events under .andi-agent/runs/
-  -h, --help          Show this help
+选项：
+  --cwd 路径          工作区根目录（默认：当前目录）
+  --session 会话ID    加载并保存本地对话会话（REPL 默认：default）
+  --approval 模式     命令审批模式：ask（默认）或 never
+  --repl              启动持久交互会话（默认使用 TUI）
+  --plain             使用经典 readline REPL，不使用 TUI
+  --log-events        将脱敏运行事件写入 .andi-agent/runs/
+  -h, --help          显示帮助
 
-Environment:
-  AGENT_PROVIDER    Model provider: agnes (default) or minimax
-  AGNES_API_KEY     Agnes API key (required for Agnes; AGENT_API_KEY is also accepted)
-  MINIMAX_API_KEY   MiniMax domestic API key (required for MiniMax)
-  AGENT_MODEL       Model name (default depends on provider)
-  AGENT_BASE_URL    API base URL (default depends on provider)
-  AGENT_MAX_TURNS   Maximum model turns (default: 12)
-  AGENT_MAX_CONTEXT_CHARS  Approximate context budget (default: 120000)
-  EXA_API_KEY       Optional Exa key that enables the web_search tool
-  EXA_BASE_URL      Exa API base URL (default: https://api.exa.ai)`;
+环境变量：
+  AGENT_PROVIDER    模型 Provider：agnes（默认）或 minimax
+  AGNES_API_KEY     Agnes API Key（Agnes 必填，也接受 AGENT_API_KEY）
+  MINIMAX_API_KEY   MiniMax 国内版 API Key（MiniMax 必填）
+  AGENT_MODEL       模型名称（默认值取决于 Provider）
+  AGENT_BASE_URL    API Base URL（默认值取决于 Provider）
+  AGENT_MAX_TURNS   最大模型轮数（默认：12）
+  AGENT_MAX_CONTEXT_CHARS  近似上下文预算（默认：120000）
+  EXA_API_KEY       可选的 Exa Key，启用 web_search 工具
+  EXA_BASE_URL      Exa API Base URL（默认：https://api.exa.ai）`;
 
 const SCHEDULE_EVENT_TYPES = new Set(["turn_started", "tool_started", "tool_completed", "agent_completed"]);
 const DEFAULT_REPL_SESSION_ID = "default";
@@ -159,17 +159,17 @@ export function parseArguments(args: readonly string[]): CliArguments {
     const argument = args[index];
     if (argument === "--cwd") {
       const value = args[index + 1];
-      if (!value) throw new Error("--cwd requires a path");
+      if (!value) throw new Error("--cwd 需要一个路径");
       cwd = value;
       index += 1;
     } else if (argument === "--session") {
       const value = args[index + 1];
-      if (!value) throw new Error("--session requires an ID");
+      if (!value) throw new Error("--session 需要一个 ID");
       session = value;
       index += 1;
     } else if (argument === "--approval") {
       const value = args[index + 1];
-      if (value !== "ask" && value !== "never") throw new Error("--approval must be 'ask' or 'never'");
+      if (value !== "ask" && value !== "never") throw new Error("--approval 必须是 'ask' 或 'never'");
       approval = value;
       index += 1;
     } else if (argument === "--repl") {
@@ -179,14 +179,14 @@ export function parseArguments(args: readonly string[]): CliArguments {
     } else if (argument === "--log-events") {
       logEvents = true;
     } else if (argument?.startsWith("-")) {
-      throw new Error(`Unknown option: ${argument}`);
+      throw new Error(`未知选项：${argument}`);
     } else if (argument) {
       taskParts.push(argument);
     }
   }
 
   const task = taskParts.join(" ").trim() || undefined;
-  if (!repl && !task) throw new Error("A task is required unless --repl is used");
+  if (!repl && !task) throw new Error("除非使用 --repl，否则必须提供任务");
   return { cwd, task, session, approval, repl, plain, logEvents };
 }
 
@@ -243,36 +243,36 @@ function createEventReporter(): {
 
     switch (event.type) {
     case "turn_started":
-      console.error(`[agent] turn ${event.turn} · ${event.messageCount} messages`);
+      console.error(`[Agent] 第 ${event.turn} 轮 · ${event.messageCount} 条消息`);
       break;
     case "model_completed":
       console.error(
-        `[agent] model completed · ${event.toolCallCount} tool call(s) · ${event.durationMs}ms${event.usage ? ` · ${event.usage.totalTokens} tokens` : ""}`,
+        `[Agent] 模型完成 · ${event.toolCallCount} 次工具调用 · ${event.durationMs}ms${event.usage ? ` · ${event.usage.totalTokens} Token${event.usage.cachedInputTokens ? ` · 缓存命中 ${event.usage.cachedInputTokens} Token` : ""}` : ""}`,
       );
       break;
     case "tool_started":
-      console.error(`[tool] ${event.toolName} started`);
+      console.error(`[工具] ${event.toolName} 开始执行`);
       break;
     case "tool_completed":
-      console.error(`[tool] ${event.toolName} ${event.ok ? "completed" : "failed"} · ${event.durationMs}ms`);
+      console.error(`[工具] ${event.toolName} ${event.ok ? "执行完成" : "执行失败"} · ${event.durationMs}ms`);
       break;
     case "context_compacted":
-      console.error(`[agent] context compacted · dropped ${event.droppedMessages} old message(s)`);
+      console.error(`[Agent] 上下文已压缩 · 丢弃 ${event.droppedMessages} 条旧消息`);
       break;
     case "memory_context_loaded":
-      console.error(`[memory] loaded ${event.ids.length} note(s) · ${event.chars} chars`);
+      console.error(`[记忆] 加载 ${event.ids.length} 条 · ${event.chars} 字符`);
       break;
     case "memory_context_failed":
-      console.error(`[memory] unavailable · ${event.error}`);
+      console.error(`[记忆] 不可用 · ${event.error}`);
       break;
     case "agent_completed":
-      console.error(`[agent] completed in ${event.turns} turn(s)`);
+      console.error(`[Agent] 已完成 · 共 ${event.turns} 轮`);
       break;
     case "agent_cancelled":
-      console.error("[agent] turn cancelled");
+      console.error("[Agent] 当前轮次已取消");
       break;
     case "agent_failed":
-      console.error(`[agent] failed · ${event.error}`);
+      console.error(`[Agent] 执行失败 · ${event.error}`);
     }
   };
   const finish = (): void => {
@@ -297,13 +297,13 @@ async function handleScheduleCommand(args: readonly string[]): Promise<void> {
 
   if (command.action === "add") {
     const task = await store.add(command.input);
-    console.log(`Scheduled '${task.id}' · next run ${task.nextRunAt}`);
+    console.log(`已创建定时任务“${task.id}” · 下次运行：${task.nextRunAt}`);
     return;
   }
   if (command.action === "list") {
     const tasks = await store.list();
     if (tasks.length === 0) {
-      console.log("No scheduled tasks.");
+      console.log("暂无定时任务。");
       return;
     }
     for (const task of tasks) console.log(formatScheduledTask(task));
@@ -311,7 +311,7 @@ async function handleScheduleCommand(args: readonly string[]): Promise<void> {
   }
   if (command.action === "remove") {
     if (!(await store.remove(command.id))) throw new Error(`Scheduled task '${command.id}' does not exist`);
-    console.log(`Removed scheduled task '${command.id}'.`);
+    console.log(`已删除定时任务“${command.id}”。`);
     return;
   }
 
@@ -339,17 +339,17 @@ async function handleSchedulerCommand(args: readonly string[]): Promise<void> {
     runner: await createCliScheduledRunner(workspace),
     pollMs: command.pollMs,
     onError(task, error) {
-      console.error(`[schedule:${task.id}] failed · ${error instanceof Error ? error.message : String(error)}`);
+      console.error(`[定时任务：${task.id}] 执行失败 · ${error instanceof Error ? error.message : String(error)}`);
     },
   });
-  console.error(`[scheduler] started · workspace ${workspace.root} · poll ${command.pollMs}ms`);
+  console.error(`[调度器] 已启动 · 工作区：${workspace.root} · 轮询：${command.pollMs}ms`);
   try {
     await scheduler.start(lifecycle.controller.signal);
   } catch (error) {
     if (!isCancellationError(error) && !lifecycle.controller.signal.aborted) throw error;
   } finally {
     lifecycle.dispose();
-    console.error("[scheduler] stopped");
+    console.error("[调度器] 已停止");
   }
 }
 
@@ -361,13 +361,13 @@ async function createCliScheduledRunner(workspace: Workspace) {
     onEvent(taskId, event) {
       if (!SCHEDULE_EVENT_TYPES.has(event.type)) return;
       if (event.type === "turn_started") {
-        console.error(`[schedule:${taskId}] turn ${event.turn} started`);
+        console.error(`[定时任务：${taskId}] 第 ${event.turn} 轮开始`);
       } else if (event.type === "tool_started") {
-        console.error(`[schedule:${taskId}] tool ${event.toolName} started`);
+        console.error(`[定时任务：${taskId}] 工具 ${event.toolName} 开始执行`);
       } else if (event.type === "tool_completed") {
-        console.error(`[schedule:${taskId}] tool ${event.toolName} ${event.ok ? "completed" : "failed"}`);
+        console.error(`[定时任务：${taskId}] 工具 ${event.toolName}${event.ok ? "执行完成" : "执行失败"}`);
       } else if (event.type === "agent_completed") {
-        console.error(`[schedule:${taskId}] completed in ${event.turns} turn(s)`);
+        console.error(`[定时任务：${taskId}] 已完成 · 共 ${event.turns} 轮`);
       }
     },
     onResult(taskId, output) {
@@ -611,7 +611,7 @@ export async function main(args = Bun.argv.slice(2)): Promise<void> {
 
 if (import.meta.main) {
   main().catch((error: unknown) => {
-    console.error(`Error: ${error instanceof Error ? error.message : String(error)}`);
+    console.error(`错误：${error instanceof Error ? error.message : String(error)}`);
     process.exitCode = 1;
   });
 }

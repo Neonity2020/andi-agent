@@ -18,7 +18,7 @@ export class ToolRegistry {
   }
 
   definitions(): ModelToolDefinition[] {
-    return [...this.#tools.values()].map(({ name, description, parameters }) => ({
+    return [...this.#tools.values()].sort((left, right) => left.name.localeCompare(right.name)).map(({ name, description, parameters }) => ({
       name,
       description,
       parameters,

@@ -2,9 +2,9 @@
 
 ## Project Structure & Module Organization
 
-Source code lives in `src/`. `agent.ts` owns the agent loop, `cli.ts` is the Bun entry point, and `repl.ts` implements persistent sessions. Model transport lives in `src/model/`, coding tools in `src/tools/`, the terminal UI foundation and orchestrator in `src/tui/`, and local scheduled-task parsing, storage, and execution in `src/scheduler/`.
+Source code lives in `src/`. `agent.ts` owns the agent loop, `cli.ts` is the Bun entry point, and `repl.ts` implements persistent sessions. Model transport lives in `src/model/`, coding tools in `src/tools/`, the terminal UI foundation and orchestrator in `src/tui/`, and local scheduled-task parsing, storage, and execution in `src/scheduler/`. Generate temporary scripts only under `workspace/temp/`; never write them into the repository root, `src/`, or another project directory.
 
-Tests in `test/` mirror source modules, for example `test/agent.test.ts`. Architecture plans belong in `.plans/`. Store durable, non-sensitive Agent memory as Markdown in `.memory/` and manage it through `memory_*` tools. The `docs/` directory is the sandbox for testing the Agent's generation capabilities, including HTML, images, screenshots, and other generated artifacts. Never commit runtime state from `.andi-agent/`.
+Tests in `test/` mirror source modules, for example `test/agent.test.ts`. Architecture plans belong in `.plans/`. Store durable, non-sensitive Agent memory as Markdown in `.memory/` and manage it through `memory_*` tools. The `docs/` directory is the sandbox for testing the Agent's generation capabilities, including HTML, images, screenshots, and other generated artifacts. Never commit runtime state from `.andi-agent/`. Temporary scripts and disposable investigation artifacts belong in `workspace/temp/` and should be cleaned up after use.
 
 ## Build, Test, and Development Commands
 

@@ -46,7 +46,7 @@ describe("parseArguments", () => {
   });
 
   test("rejects an invalid approval mode", () => {
-    expect(() => parseArguments(["--approval", "always", "task"])).toThrow("ask' or 'never");
+    expect(() => parseArguments(["--approval", "always", "task"])).toThrow("必须是 'ask' 或 'never'");
   });
 
   test("allows REPL mode without an initial task", () => {

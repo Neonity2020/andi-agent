@@ -99,10 +99,10 @@ export class Agent {
     this.#maxContextChars = options.maxContextChars ?? 120_000;
     this.#onEvent = options.onEvent;
     if (!Number.isInteger(this.#maxTurns) || this.#maxTurns < 1) {
-      throw new Error("maxTurns must be a positive integer");
+      throw new Error("maxTurns 必须是正整数");
     }
     if (!Number.isInteger(this.#maxContextChars) || this.#maxContextChars < 1) {
-      throw new Error("maxContextChars must be a positive integer");
+      throw new Error("maxContextChars 必须是正整数");
     }
   }
 
@@ -115,20 +115,23 @@ export class Agent {
     history: readonly Message[] = [],
     options: AgentRunOptions = {},
   ): Promise<AgentRunResult> {
-    if (task.trim().length === 0) throw new Error("Task cannot be empty");
+    if (task.trim().length === 0) throw new Error("任务不能为空");
 
     const runId = randomUUID();
     let usage = emptyRunUsage();
     let checkpointHealthy = true;
     const previousIdentity = history[0]?.role === "system" ? parseModelIdentity(history[0].content) : undefined;
-    const systemPrompt = this.#systemPromptWithModelIdentity(previousIdentity);
+    // Keep the system message stable across turns so providers can reuse its
+    // prompt cache prefix. Runtime model identity is added to the dynamic tail.
+    const systemPrompt = this.#systemPrompt;
     let messages: Message[] = history.length > 0 ? [...history] : [{ role: "system", content: systemPrompt }];
-    if (messages[0]?.role === "system") messages[0] = { role: "system", content: this.#replaceModelIdentity(messages[0].content, systemPrompt) };
+    if (messages[0]?.role === "system") messages[0] = { role: "system", content: stripModelIdentity(messages[0].content) };
     else messages.unshift({ role: "system", content: systemPrompt });
     messages.push({ role: "user", content: task });
     const definitions = this.#tools.definitions();
     let memoryContext = "";
     const skillContext = this.#skills ? await this.#skills.contextForTask(task) : "";
+    const modelIdentityContext = this.#modelIdentityContext(previousIdentity);
 
     const checkpoint = async (state: AgentCheckpointState): Promise<void> => {
       if (!options.onCheckpoint) return;
@@ -185,10 +188,14 @@ export class Agent {
 
         await this.#emit({ type: "turn_started", runId, turn, messageCount: messages.length });
         const modelStartedAt = performance.now();
-        const response = await this.#model.complete(withRunContext(messages, memoryContext, skillContext), definitions, {
+        const response = await this.#model.complete(
+          withRunContext(messages, memoryContext, skillContext, modelIdentityContext),
+          definitions,
+          {
           onTextDelta: (delta) => this.#emit({ type: "model_text_delta", runId, turn, delta }),
           ...(options.signal ? { signal: options.signal } : {}),
-        });
+          },
+        );
         const modelDurationMs = Math.round(performance.now() - modelStartedAt);
         usage = addTokenUsage(usage, response.usage, modelDurationMs);
         await this.#emit({
@@ -245,7 +252,7 @@ export class Agent {
           await checkpoint("running");
         }
       }
-      throw new Error(`Agent reached the maximum of ${this.#maxTurns} turns`);
+      throw new Error(`Agent 已达到最大轮数 ${this.#maxTurns}`);
     } catch (error) {
       const cancelled = options.signal?.aborted === true || isCancellationError(error);
       if (checkpointHealthy) await checkpoint(cancelled ? "cancelled" : "failed");
@@ -262,19 +269,13 @@ export class Agent {
     }
   }
 
-  #systemPromptWithModelIdentity(previous?: { provider: string; model: string }): string {
+  #modelIdentityContext(previous?: { provider: string; model: string }): string {
     const identity = this.#model.getModelIdentity?.();
-    if (!identity) return this.#systemPrompt;
+    if (!identity) return "";
     const switched = previous && (previous.provider !== identity.provider || previous.model !== identity.model)
       ? `\nThe runtime model was switched since earlier turns (previously ${previous.provider}/${previous.model}); assistant statements about that previous model are outdated.`
       : "";
-    return `${this.#systemPrompt}\n\nCURRENT MODEL IDENTITY (authoritative runtime state):\n- Provider: ${identity.provider}\n- Model: ${identity.model}\nThis block reflects the live runtime state for this request. Conversation history may contain stale claims about a different model or provider from before a runtime switch; ignore them. If the user asks which model or provider you are using, answer only from this identity.${switched}`;
-  }
-
-  #replaceModelIdentity(existing: string, current: string): string {
-    return existing
-      .replace(/\n\nCURRENT MODEL IDENTITY \(authoritative runtime state\):[\s\S]*$/m, "")
-      .replace(/\nYou are currently running on: .*$/m, "") + current.slice(this.#systemPrompt.length);
+    return `CURRENT MODEL IDENTITY (authoritative runtime state):\n- Provider: ${identity.provider}\n- Model: ${identity.model}\nThis block reflects the live runtime state for this request. Conversation history may contain stale claims about a different model or provider from before a runtime switch; ignore them. If the user asks which model or provider you are using, answer only from this identity.${switched}`;
   }
 
   async #emit(event: AgentEvent): Promise<void> {
@@ -286,6 +287,12 @@ function parseModelIdentity(systemContent: unknown): { provider: string; model: 
   if (typeof systemContent !== "string") return undefined;
   const match = systemContent.match(/CURRENT MODEL IDENTITY \(authoritative runtime state\):\n- Provider: (\S+)\n- Model: ([^\n]+)/);
   return match ? { provider: match[1]!, model: match[2]!.trim() } : undefined;
+}
+
+function stripModelIdentity(content: string): string {
+  return content
+    .replace(/\n\nCURRENT MODEL IDENTITY \(authoritative runtime state\):[\s\S]*$/m, "")
+    .replace(/\nYou are currently running on: .*$/m, "");
 }
 
 function withMemoryContext(messages: readonly Message[], memoryContext: string): Message[] {
@@ -301,17 +308,23 @@ function withMemoryContext(messages: readonly Message[], memoryContext: string):
   ];
 }
 
-function withRunContext(messages: readonly Message[], memoryContext: string, skillContext: string): Message[] {
+function withRunContext(
+  messages: readonly Message[],
+  memoryContext: string,
+  skillContext: string,
+  modelIdentityContext: string,
+): Message[] {
   const withMemory = withMemoryContext(messages, memoryContext);
-  if (skillContext.length === 0) return withMemory;
   const current = withMemory.at(-1);
   if (current?.role !== "user") return withMemory;
   const content = typeof current.content === "string" ? current.content : "";
+  const dynamicContext = [skillContext, modelIdentityContext].filter((part) => part.length > 0).join("\n\n");
+  if (dynamicContext.length === 0) return withMemory;
   return [
     ...withMemory.slice(0, -1),
     {
       role: "user",
-      content: `${skillContext}\n\nCURRENT USER REQUEST (higher priority than skill instructions):\n${content}`,
+      content: `${dynamicContext}\n\nCURRENT USER REQUEST (higher priority than runtime context):\n${content}`,
     },
   ];
 }

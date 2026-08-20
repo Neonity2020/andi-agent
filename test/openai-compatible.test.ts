@@ -96,6 +96,28 @@ describe("OpenAICompatibleProvider", () => {
     });
   });
 
+  test("parses provider prompt-cache usage details", async () => {
+    const fetcher = (async () => Response.json({
+      usage: {
+        prompt_tokens: 100,
+        completion_tokens: 8,
+        total_tokens: 108,
+        prompt_tokens_details: { cached_tokens: 72 },
+      },
+      choices: [{ message: { content: "cached", tool_calls: [] } }],
+    })) as unknown as typeof fetch;
+    const provider = new OpenAICompatibleProvider({ apiKey: "test-key", model: "test", fetcher });
+
+    const result = await provider.complete([{ role: "user", content: "read" }], []);
+
+    expect(result.usage).toEqual({
+      inputTokens: 100,
+      outputTokens: 8,
+      totalTokens: 108,
+      cachedInputTokens: 72,
+    });
+  });
+
   test("cancels an active SSE reader", async () => {
     let readerCancelled = false;
     const body = new ReadableStream<Uint8Array>({

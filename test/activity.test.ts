@@ -44,7 +44,7 @@ describe("renderSealedTool", () => {
   });
 
   test("renders cancelled tools dimly", () => {
-    expect(renderCancelledTool("run_command", theme)).toBe("· run_command cancelled");
+    expect(renderCancelledTool("run_command", theme)).toBe("· run_command 已取消");
   });
 });
 
@@ -69,7 +69,7 @@ describe("ActivityState", () => {
     expect(state.render(0, 40, theme)).toEqual([]);
 
     state.beginTurn(0);
-    expect(state.render(100, 40, theme)).toEqual([`${SPINNER_FRAMES[1]} thinking · 100ms`]);
+    expect(state.render(100, 40, theme)).toEqual([`${SPINNER_FRAMES[1]} 思考中 · 100ms`]);
 
     state.appendDelta("hello streaming world");
     expect(state.phase).toBe("streaming");

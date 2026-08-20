@@ -233,7 +233,7 @@ export class Tui {
       const thinking = this.#activity.takeThinking();
       const stream = this.#activity.takeStream();
       if (thinking.text.trim().length > 0 || thinking.open) {
-        this.#seal([this.#theme.style.dim(`thinking (collapsed) ${this.#theme.symbols.dot} ${thinking.text.trim().length} chars`)]);
+        this.#seal([this.#theme.style.dim(`思考（已折叠） ${this.#theme.symbols.dot} ${thinking.text.trim().length} 字符`)]);
       }
       if (stream.trim().length > 0) {
         this.#seal(renderMarkdown(stream.trim(), this.#width(), this.#theme));
@@ -249,7 +249,7 @@ export class Tui {
       this.#seal([renderSealedTool(event.toolName, event.ok, event.durationMs, this.#theme)]);
       break;
     case "context_compacted":
-      this.#seal([this.#theme.style.dim(`context compacted ${this.#theme.symbols.dot} dropped ${event.droppedMessages} message(s)`)]);
+      this.#seal([this.#theme.style.dim(`上下文已压缩 ${this.#theme.symbols.dot} 丢弃 ${event.droppedMessages} 条消息`)]);
       break;
     case "memory_context_loaded":
       this.#seal([
@@ -259,10 +259,10 @@ export class Tui {
       ]);
       break;
     case "memory_context_failed":
-      this.#seal([this.#theme.warnText(`memory unavailable ${this.#theme.symbols.dot} ${event.error}`)]);
+      this.#seal([this.#theme.warnText(`记忆不可用 ${this.#theme.symbols.dot} ${event.error}`)]);
       break;
     case "agent_completed":
-      this.#seal([this.#theme.style.dim(`done ${this.#theme.symbols.arrow} ${event.turns} turn(s)`)]);
+      this.#seal([this.#theme.style.dim(`完成 ${this.#theme.symbols.arrow} ${event.turns} 轮`)]);
       this.#activity.endTurn();
       this.#mode = "input";
       break;
@@ -270,19 +270,19 @@ export class Tui {
       const thinking = this.#activity.takeThinking();
       const leftover = this.#activity.takeStream();
       if (thinking.text.trim().length > 0 || thinking.open) {
-        this.#seal([this.#theme.style.dim(`thinking (collapsed) ${this.#theme.symbols.dot} ${thinking.text.trim().length} chars`)]);
+        this.#seal([this.#theme.style.dim(`思考（已折叠） ${this.#theme.symbols.dot} ${thinking.text.trim().length} 字符`)]);
       }
       if (leftover.trim().length > 0) this.#seal([this.#theme.style.dim(leftover.trim())]);
       for (const tool of this.#activity.drainTools()) {
         this.#seal([renderCancelledTool(tool.name, this.#theme)]);
       }
-      this.#seal([this.#theme.style.dim("turn cancelled")]);
+      this.#seal([this.#theme.style.dim("当前轮次已取消")]);
       this.#activity.endTurn();
       this.#mode = "input";
       break;
     }
     case "agent_failed":
-      this.#seal([this.#theme.errorText(`failed ${this.#theme.symbols.dot} ${event.error}`)]);
+      this.#seal([this.#theme.errorText(`失败 ${this.#theme.symbols.dot} ${event.error}`)]);
       this.#activity.endTurn();
       this.#mode = "input";
       break;
@@ -297,7 +297,7 @@ export class Tui {
     this.#turnSealedOutput = true;
     const parsed = parseThinkTags(result.output);
     if (parsed.thinking.trim().length > 0 || parsed.thinkingOpen) {
-      this.#seal([this.#theme.style.dim(`thinking (collapsed) ${parsed.thinking.trim().length} chars`)]);
+      this.#seal([this.#theme.style.dim(`思考（已折叠） ${this.#theme.symbols.dot} ${parsed.thinking.trim().length} 字符`)]);
     }
     const output = parsed.content.trim();
     if (output.length > 0) this.#seal(renderMarkdown(output, this.#width(), this.#theme));
@@ -598,7 +598,7 @@ export class Tui {
     } else if (this.#mode === "select" && this.#selection) {
       lines.push(...this.#selectionLines(this.#selection, width));
     } else if (this.#mode === "running") {
-      lines.push(this.#theme.style.dim("ctrl-c to cancel"));
+      lines.push(this.#theme.style.dim("按 Ctrl-C 取消"));
     } else {
       lines.push(...this.#completionLines(width));
       lines.push(...this.#inputLines(width));
@@ -652,10 +652,10 @@ export class Tui {
     lines.push(
       selection.query.length > 0
         ? `${this.#theme.symbols.prompt} ${selection.query}`
-        : this.#theme.style.dim("Type to filter models"),
+        : this.#theme.style.dim("输入文字筛选模型"),
     );
     if (visible.length === 0) {
-      lines.push(this.#theme.style.dim("  No matching models"));
+      lines.push(this.#theme.style.dim("  没有匹配的模型"));
     } else {
       visible.forEach((item, offset) => {
         const index = start + offset;
@@ -665,7 +665,7 @@ export class Tui {
         lines.push(index === selectedIndex ? this.#theme.brandText(line) : line);
       });
     }
-    lines.push(this.#theme.style.dim("↑/↓ navigate · enter select · esc cancel"));
+    lines.push(this.#theme.style.dim("↑/↓ 导航 · Enter 选择 · Esc 取消"));
     return lines;
   }
 
@@ -714,7 +714,7 @@ export class Tui {
     if (this.#mode !== "input" || !this.#completionActive()) return [];
     const items = this.#completionMatches();
     const selectedIndex = Math.min(this.#completion.selectedIndex, Math.max(items.length - 1, 0));
-    if (items.length === 0) return [this.#theme.style.dim(`  no matching commands`)];
+    if (items.length === 0) return [this.#theme.style.dim("  没有匹配的命令")];
     const lines = items.map((item, index) => {
       const marker = index === selectedIndex ? this.#theme.symbols.prompt : " ";
       const label = `${marker} ${item.name}`;
@@ -724,7 +724,7 @@ export class Tui {
       const line = `${label}${description}`;
       return index === selectedIndex ? this.#theme.brandText(line) : line;
     });
-    lines.push(this.#theme.style.dim("  ↑↓ select · tab complete · enter run · esc dismiss"));
+    lines.push(this.#theme.style.dim("  ↑↓ 选择 · Tab 补全 · Enter 执行 · Esc 关闭"));
     return lines;
   }
 

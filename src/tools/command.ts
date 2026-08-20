@@ -120,11 +120,11 @@ export function createCommandTool(cwd: string, options: CommandToolOptions = {})
   return {
     name: "run_command",
     description:
-      "Run an approved test, typecheck, build, or lint command in the workspace without a shell. Only use for project verification tasks (e.g. bun test, npm test, tsc --noEmit). NEVER use for executing ad-hoc scripts (bun -e, node -e), previewing markdown/tables, or calculating values. Use dedicated Git tools for Git operations.",
+      "在工作区内不经过 Shell 执行已批准的测试、类型检查、构建或 lint 命令。仅用于项目验证（例如 bun test、npm test、tsc --noEmit）。禁止执行临时脚本（bun -e、node -e）、预览 Markdown/表格或计算数值。Git 操作请使用专用 Git 工具。",
     parameters: {
       type: "object",
       properties: {
-        program: { type: "string", description: "Executable name or path" },
+        program: { type: "string", description: "可执行文件名称或路径" },
         args: { type: "array", items: { type: "string" } },
         timeout_seconds: { type: "integer", minimum: 1, maximum: 120, default: 30 },
       },
