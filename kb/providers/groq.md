@@ -1,11 +1,16 @@
 ---
 title: Groq
+id: groq
 category: providers
+type: provider
+status: reference
 proto: openai-compatible
 endpoint: https://api.groq.com/openai/v1
 auth: GROQ_API_KEY
 models: llama-3.3-70b-versatile, llama-3.1-8b-instant
 updated: 2026-08-19
+source: https://console.groq.com/docs
+related: ["../MOC.md"]
 ---
 
 # Groq

@@ -1,11 +1,16 @@
 ---
 title: OpenAI
+id: openai
 category: providers
+type: provider
+status: reference
 proto: openai-compatible
 endpoint: https://api.openai.com/v1
 auth: OPENAI_API_KEY
 models: gpt-4o, gpt-4o-mini, gpt-4.1, o3, o4-mini
 updated: 2026-08-19
+source: https://platform.openai.com/docs
+related: ["../MOC.md"]
 ---
 
 # OpenAI

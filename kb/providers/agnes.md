@@ -1,11 +1,16 @@
 ---
 title: Agnes (本项目默认)
+id: agnes
 category: providers
+type: provider
+status: verified
 proto: openai-compatible
 endpoint: https://apihub.agnes-ai.com/v1
 auth: AGNES_API_KEY
 models: agnes-2.5-flash
 updated: 2026-08-19
+source: https://agnes-ai.com/doc/overview
+related: ["../MOC.md"]
 ---
 
 # Agnes

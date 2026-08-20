@@ -1,11 +1,16 @@
 ---
 title: Ollama (本地)
+id: ollama
 category: providers
+type: provider
+status: reference
 proto: openai-compatible
 endpoint: http://localhost:11434/v1
 auth: 无（本地）
 models: llama3.2, qwen2.5, mistral 等
 updated: 2026-08-19
+source: https://docs.ollama.com/
+related: ["../MOC.md"]
 ---
 
 # Ollama (本地)

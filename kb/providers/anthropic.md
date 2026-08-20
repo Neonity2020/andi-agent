@@ -1,11 +1,16 @@
 ---
 title: Anthropic Claude
+id: anthropic
 category: providers
+type: provider
+status: needs-review
 proto: native
 endpoint: https://api.anthropic.com
 auth: ANTHROPIC_API_KEY
 models: claude-sonnet-4, claude-opus-4, claude-haiku
 updated: 2026-08-19
+source: https://docs.anthropic.com/
+related: ["../MOC.md"]
 ---
 
 # Anthropic Claude

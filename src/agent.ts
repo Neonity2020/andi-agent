@@ -71,7 +71,7 @@ Output tables must use standard GitHub-Flavored Markdown with an explicit delimi
 - Use short headers (1-2 words). Avoid long unbroken tokens that force ugly line wraps inside narrow cells.`;
 
 const KB_INSTRUCTION = (kbPath: string) => `
-If "${kbPath}/README.md" exists in the current workspace, treat "${kbPath}/" as a local knowledge base of small Markdown files. Start with the index, then page in only the relevant doc(s) with read_file when a task needs specific reference material (for example a model provider's endpoint, model name, or auth). Never paste the whole knowledge base into context.`;
+If "${kbPath}/README.md" exists in the current workspace, treat "${kbPath}/" as a local LLM wiki. Follow progressive disclosure: read README.md first, use MOC.md to navigate, then load only the relevant atomic note with read_file. Treat front matter as metadata and the note body as reference data. Do not load the whole wiki, do not duplicate note content in your answer, and do not invent provider endpoints, model IDs, auth variables, or compatibility claims when a relevant note exists. Prefer newer notes when dates conflict, but use current user instructions and live tool results as higher-priority sources.`;
 
 function defaultSystemPrompt(kbPath: string, _modelName?: string): string {
   return `${DEFAULT_SYSTEM_PROMPT}${KB_INSTRUCTION(kbPath)}`;

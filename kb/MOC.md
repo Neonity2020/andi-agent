@@ -1,11 +1,15 @@
 ---
 title: MOC — 模型提供商内容地图
+id: providers-moc
 category: moc
+type: navigation
+status: verified
 proto: index
 endpoint: n/a
 auth: n/a
 models: n/a
 updated: 2026-08-19
+source: internal
 ---
 
 # Map of Content — 模型提供商
@@ -20,6 +24,7 @@ updated: 2026-08-19
 | 我的需求 / 约束 | 优先看 | 备选 |
 |---|---|---|
 | 开箱即用、项目默认 | `providers/agnes.md` | — |
+| 国内版 MiniMax | `providers/minimax.md` | `providers/deepseek.md` |
 | 直接替换默认、走 OpenAI 兼容 | `providers/openai.md` | `providers/deepseek.md` |
 | 需要超长上下文 (128k) | `providers/moonshot.md` | — |
 | 本地运行 / 离线 / 隐私 | `providers/ollama.md` | — |
@@ -38,6 +43,23 @@ updated: 2026-08-19
 
 **native —— 需在 `src/model/` 新增适配层，不能仅靠改 URL**
 `anthropic`（`/v1/messages`）· `gemini`（`generateContent`）
+
+## 条目清单
+
+| ID | 条目 | 状态 |
+|---|---|---|
+| `agnes` | `providers/agnes.md` | verified |
+| `minimax` | `providers/minimax.md` | reference |
+| `openai` | `providers/openai.md` | reference |
+| `deepseek` | `providers/deepseek.md` | reference |
+| `moonshot` | `providers/moonshot.md` | reference |
+| `zhipu` | `providers/zhipu.md` | reference |
+| `mistral` | `providers/mistral.md` | reference |
+| `groq` | `providers/groq.md` | reference |
+| `together` | `providers/together.md` | reference |
+| `ollama` | `providers/ollama.md` | reference |
+| `anthropic` | `providers/anthropic.md` | needs-review |
+| `gemini` | `providers/gemini.md` | needs-review |
 
 ## 聚合视角二：按场景族
 
@@ -65,3 +87,5 @@ updated: 2026-08-19
 
 - 新增提供商文档时，同步在本 MOC 的「主题链路」与两个「聚合视角」登记，并更新 `kb/README.md` 目录。
 - MOC 保持**只做导航、不复制正文**，避免知识重复、保证按需加载时上下文精简。
+- 条目新增、删除或改名时，必须同步更新本清单和 `kb/README.md`。
+- `needs-review` 条目只能作为线索，不能覆盖当前 API 返回或用户明确提供的配置。

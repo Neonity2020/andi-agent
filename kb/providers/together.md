@@ -1,11 +1,16 @@
 ---
 title: Together AI
+id: together
 category: providers
+type: provider
+status: reference
 proto: openai-compatible
 endpoint: https://api.together.xyz/v1
 auth: TOGETHER_API_KEY
 models: meta-llama/Llama-3.3-70B-Instruct-Turbo, Qwen/Qwen2.5-72B-Instruct-Turbo
 updated: 2026-08-19
+source: https://docs.together.ai/
+related: ["../MOC.md"]
 ---
 
 # Together AI

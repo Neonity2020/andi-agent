@@ -1,11 +1,16 @@
 ---
 title: DeepSeek
+id: deepseek
 category: providers
+type: provider
+status: reference
 proto: openai-compatible
 endpoint: https://api.deepseek.com
 auth: DEEPSEEK_API_KEY
 models: deepseek-v4-pro-0813, deepseek-v4-flash（均以官方文档为准）
 updated: 2026-08-19
+source: https://api-docs.deepseek.com/
+related: ["../MOC.md"]
 ---
 
 # DeepSeek

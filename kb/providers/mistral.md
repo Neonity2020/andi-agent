@@ -1,11 +1,16 @@
 ---
 title: Mistral
+id: mistral
 category: providers
+type: provider
+status: reference
 proto: openai-compatible
 endpoint: https://api.mistral.ai/v1
 auth: MISTRAL_API_KEY
 models: mistral-large-latest, mistral-small-latest, open-mistral-nemo
 updated: 2026-08-19
+source: https://docs.mistral.ai/
+related: ["../MOC.md"]
 ---
 
 # Mistral

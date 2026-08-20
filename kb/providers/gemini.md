@@ -1,11 +1,16 @@
 ---
 title: Google Gemini
+id: gemini
 category: providers
+type: provider
+status: needs-review
 proto: native
 endpoint: https://generativelanguage.googleapis.com/v1beta
 auth: GEMINI_API_KEY
 models: gemini-2.5-pro, gemini-2.5-flash, gemini-2.0-flash
 updated: 2026-08-19
+source: https://ai.google.dev/gemini-api/docs
+related: ["../MOC.md"]
 ---
 
 # Google Gemini

@@ -1,11 +1,16 @@
 ---
 title: Moonshot (Kimi)
+id: moonshot
 category: providers
+type: provider
+status: reference
 proto: openai-compatible
 endpoint: https://api.moonshot.cn/v1
 auth: MOONSHOT_API_KEY
 models: moonshot-v1-8k, moonshot-v1-32k, moonshot-v1-128k, kimi-k2
 updated: 2026-08-19
+source: https://platform.moonshot.cn/docs
+related: ["../MOC.md"]
 ---
 
 # Moonshot (Kimi)

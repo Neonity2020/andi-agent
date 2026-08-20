@@ -1,11 +1,16 @@
 ---
 title: 智谱 GLM (BigModel)
+id: zhipu
 category: providers
+type: provider
+status: reference
 proto: openai-compatible
 endpoint: https://open.bigmodel.cn/api/paas/v4
 auth: ZHIPU_API_KEY
 models: glm-4-plus, glm-4-flash, glm-4-air
 updated: 2026-08-19
+source: https://open.bigmodel.cn/dev/api
+related: ["../MOC.md"]
 ---
 
 # 智谱 GLM (BigModel)
