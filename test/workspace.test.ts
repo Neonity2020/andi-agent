@@ -48,4 +48,11 @@ describe("Workspace", () => {
     expect(() => workspace.assertGitPath(".memory/preferences.md")).not.toThrow();
     expect(() => workspace.assertGitPath(".andi-agent/sessions/private.json")).toThrow("reserved");
   });
+
+  test("reserves knowledge writes for the knowledge tools", async () => {
+    const workspace = await createWorkspace();
+    expect(() => workspace.assertToolPath("kb/providers/agnes.md")).not.toThrow();
+    expect(() => workspace.assertWritableToolPath("kb/providers/agnes.md")).toThrow("knowledge tools");
+    expect(() => workspace.assertGitPath("kb/providers/agnes.md")).not.toThrow();
+  });
 });

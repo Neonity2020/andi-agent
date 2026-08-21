@@ -76,6 +76,9 @@ describe("createScheduledAgentRunner", () => {
     expect(receivedToolNames).toContain("web_search");
     expect(receivedToolNames).toContain("memory_search");
     expect(receivedToolNames).toContain("memory_read");
+    expect(receivedToolNames).toContain("knowledge_search");
+    expect(receivedToolNames).toContain("knowledge_read");
+    expect(receivedToolNames).not.toContain("knowledge_capture");
     expect(receivedToolNames).not.toContain("memory_remember");
     expect(receivedToolNames).not.toContain("memory_archive");
     expect(receivedMessages.some((message) => message.content?.includes("Scheduled work should produce concise output"))).toBeTrue();

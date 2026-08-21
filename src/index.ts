@@ -11,6 +11,8 @@ export type * from "./model/types";
 export { MemoryStore, parseMemoryDocument } from "./memory/store";
 export { rankMemoryDocuments, tokenizeMemoryText, type RankMemoryOptions } from "./memory/retrieval";
 export type * from "./memory/types";
+export { KnowledgeStore, parseKnowledgeDocument } from "./knowledge/store";
+export type * from "./knowledge/types";
 export {
   SkillManager,
   type LoadedSkill,
@@ -67,6 +69,7 @@ export {
 export { createEditTool } from "./tools/editing";
 export { createGitTools, type GitToolOptions } from "./tools/git";
 export { createMemoryTools, type MemoryToolOptions } from "./tools/memory";
+export { createKnowledgeTools, type KnowledgeToolOptions } from "./tools/knowledge";
 export { ToolRegistry } from "./tools/registry";
 export { createSearchTool, searchCode, type SearchCodeOptions } from "./tools/search";
 export { createSchedulerTools, type SchedulerToolOptions } from "./tools/scheduler";
@@ -81,3 +84,4 @@ export {
 export type * from "./tools/types";
 export { Workspace, createWorkspaceTools } from "./tools/workspace";
 export { addRunUsage, addTokenUsage, emptyRunUsage } from "./usage";
+export { createWebServer, type WebAgentFactory, type WebServer, type WebServerOptions } from "./web";

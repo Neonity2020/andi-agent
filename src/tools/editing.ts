@@ -25,7 +25,7 @@ export function createEditTool(workspace: Workspace): Tool {
       const oldText = requireString(values, "old_text");
       const newText = requireString(values, "new_text");
       if (oldText.length === 0) throw new Error("Field 'old_text' cannot be empty");
-      workspace.assertToolPath(path);
+      workspace.assertWritableToolPath(path);
 
       const content = await workspace.read(path);
       const firstMatch = content.indexOf(oldText);

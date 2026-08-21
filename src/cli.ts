@@ -31,6 +31,9 @@ import { Tui } from "./tui/tui";
 import { MemoryStore } from "./memory/store";
 import { createMemoryTools } from "./tools/memory";
 import { SkillManager } from "./skills/manager";
+import { KnowledgeStore } from "./knowledge/store";
+import { createKnowledgeTools } from "./tools/knowledge";
+import { createWebServer } from "./web";
 
 const HELP = `andi-agent - 基于 Bun + TypeScript 的轻量 Coding Agent
 
@@ -49,6 +52,8 @@ const HELP = `andi-agent - 基于 Bun + TypeScript 的轻量 Coding Agent
   --session 会话ID    加载并保存本地对话会话（REPL 默认：default）
   --approval 模式     命令审批模式：ask（默认）或 never
   --repl              启动持久交互会话（默认使用 TUI）
+  --web               启动仅绑定本机的 Web UI
+  --port 端口         Web UI 端口（默认：4317）
   --plain             使用经典 readline REPL，不使用 TUI
   --log-events        将脱敏运行事件写入 .andi-agent/runs/
   -h, --help          显示帮助
@@ -75,6 +80,8 @@ interface CliArguments {
   repl: boolean;
   plain: boolean;
   logEvents: boolean;
+  web?: boolean;
+  port?: number;
 }
 
 interface Questioner {
@@ -153,6 +160,8 @@ export function parseArguments(args: readonly string[]): CliArguments {
   let repl = false;
   let plain = false;
   let logEvents = false;
+  let web = false;
+  let port = 4317;
   const taskParts: string[] = [];
 
   for (let index = 0; index < args.length; index += 1) {
@@ -178,6 +187,14 @@ export function parseArguments(args: readonly string[]): CliArguments {
       plain = true;
     } else if (argument === "--log-events") {
       logEvents = true;
+    } else if (argument === "--web") {
+      web = true;
+    } else if (argument === "--port") {
+      const value = args[index + 1];
+      if (!value || !/^\d+$/.test(value)) throw new Error("--port 需要一个数字");
+      port = Number(value);
+      if (port < 1 || port > 65535) throw new Error("--port 必须在 1 到 65535 之间");
+      index += 1;
     } else if (argument?.startsWith("-")) {
       throw new Error(`未知选项：${argument}`);
     } else if (argument) {
@@ -186,12 +203,22 @@ export function parseArguments(args: readonly string[]): CliArguments {
   }
 
   const task = taskParts.join(" ").trim() || undefined;
-  if (!repl && !task) throw new Error("除非使用 --repl，否则必须提供任务");
-  return { cwd, task, session, approval, repl, plain, logEvents };
+  if (!repl && !web && !task) throw new Error("除非使用 --repl 或 --web，否则必须提供任务");
+  if (web && taskParts.length > 0) throw new Error("--web 不能同时提供单次任务");
+  return {
+    cwd,
+    task,
+    session,
+    approval,
+    repl,
+    plain,
+    logEvents,
+    ...(web ? { web: true, port } : {}),
+  };
 }
 
-export function resolveSessionId(options: Pick<CliArguments, "repl" | "session">): string | undefined {
-  return options.session ?? (options.repl ? DEFAULT_REPL_SESSION_ID : undefined);
+export function resolveSessionId(options: Pick<CliArguments, "repl" | "web" | "session">): string | undefined {
+  return options.session ?? (options.repl || options.web ? DEFAULT_REPL_SESSION_ID : undefined);
 }
 
 function createTerminalApprover(
@@ -422,6 +449,7 @@ export function createAgentToolRegistry(
     ...createGitTools(workspace, approvalOptions),
     ...createSchedulerTools(scheduleStore, { runner: conversationalScheduledRunner }),
     ...createMemoryTools(memory),
+    ...createKnowledgeTools(new KnowledgeStore(workspace)),
     ...(config.exa ? [createWebSearchTool(config.exa)] : []),
     createWeatherTool(),
   ]);
@@ -478,7 +506,6 @@ export async function main(args = Bun.argv.slice(2)): Promise<void> {
       return result.stdout;
     },
   });
-  const tools = createAgentToolRegistry(workspace, config, approver, memory, skills);
   const configuredProviders = Object.keys(config.providers ?? {}) as Array<"agnes" | "minimax">;
   const providerInstances = new Map<"agnes" | "minimax", ReturnType<typeof createModelProvider>>();
   const catalogManagers = new Map<"agnes" | "minimax", ModelCatalogManager>();
@@ -504,6 +531,46 @@ export async function main(args = Bun.argv.slice(2)): Promise<void> {
   });
   if (selectionRestored && tui) tui.setModel(`${model.currentProvider}/${model.currentModel}`);
   const models = createPersistingModelManager(model, selectionStore);
+
+  if (cli.web) {
+    const sessions = new SessionStore(workspace);
+    const web = await createWebServer({
+      workspace,
+      sessions,
+      ...(cli.port === undefined ? {} : { port: cli.port }),
+      model: {
+        currentProvider: model.currentProvider,
+        currentModel: model.currentModel,
+        availableProviders: () => model.availableProviders(),
+      },
+      agentFactory: {
+        create({ approver: webApprover, onEvent }) {
+          const tools = createAgentToolRegistry(workspace, config, webApprover, memory, skills);
+          return new Agent({
+            model,
+            tools,
+            memory,
+            skills,
+            maxTurns: config.maxTurns,
+            maxContextChars: config.maxContextChars,
+            onEvent,
+          });
+        },
+      },
+    });
+    console.error(`andi-agent Web UI 已启动：http://127.0.0.1:${web.server.port}`);
+    await new Promise<void>((resolve) => {
+      const stop = (): void => {
+        web.close();
+        resolve();
+      };
+      process.once("SIGINT", stop);
+      process.once("SIGTERM", stop);
+    });
+    return;
+  }
+
+  const tools = createAgentToolRegistry(workspace, config, approver, memory, skills);
   const reporter = createEventReporter();
   const recorder = cli.logEvents ? new RunRecorder(workspace) : undefined;
   const agent = new Agent({

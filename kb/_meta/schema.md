@@ -27,7 +27,7 @@ related: ["../README.md", "../MOC.md"]
 
 ## Provider 条目字段
 
-Provider 条目额外包含 `proto`、`endpoint`、`auth`、`models` 和 `related`。`native` 协议不能仅通过修改 Base URL 接入本项目，必须在 `src/model/` 增加适配层。
+Provider 条目额外包含 `proto`、`endpoint`、`auth`、`models`、`sources` 和 `related`。`native` 协议不能仅通过修改 Base URL 接入本项目，必须在 `src/model/` 增加适配层。
 
 ## 正文规则
 
