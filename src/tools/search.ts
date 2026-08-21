@@ -1,3 +1,5 @@
+import { readdir, readFile } from "node:fs/promises";
+import { join, relative } from "node:path";
 import type { Tool } from "./types";
 import { readLimited, processEnvWithoutSecrets } from "./command";
 import { requireRecord, requireString } from "./validation";
@@ -54,6 +56,9 @@ export async function searchCode(
       env: processEnvWithoutSecrets(),
     });
   } catch (error) {
+    if (isMissingExecutable(error)) {
+      return searchCodeWithoutRipgrep(cwd, query, options);
+    }
     throw new Error(`Unable to start ripgrep: ${error instanceof Error ? error.message : String(error)}`);
   }
   let cancelled = false;
@@ -73,6 +78,82 @@ export async function searchCode(
 
   const allResults = stdout.split("\n").filter(Boolean);
   return { results: allResults.slice(0, maxResults), truncated: allResults.length > maxResults };
+}
+
+async function searchCodeWithoutRipgrep(
+  cwd: string,
+  query: string,
+  options: SearchCodeOptions,
+): Promise<{ results: string[]; truncated: boolean }> {
+  const maxResults = options.maxResults ?? 100;
+  const matcher = options.regex ? new RegExp(query, "g") : undefined;
+  const results: string[] = [];
+  let hasMore = false;
+
+  const visit = async (directory: string): Promise<void> => {
+    const entries = await readdir(directory, { withFileTypes: true });
+    entries.sort((left, right) => left.name.localeCompare(right.name));
+    for (const entry of entries) {
+      if (results.length >= maxResults) {
+        hasMore = true;
+        return;
+      }
+      if (entry.name === ".git" || entry.name === ".andi-agent" || entry.name === ".memory" || entry.name === "node_modules") continue;
+      const absolute = join(directory, entry.name);
+      if (entry.isDirectory()) {
+        await visit(absolute);
+        if (hasMore) return;
+        continue;
+      }
+      if (!entry.isFile()) continue;
+      const displayPath = relative(cwd, absolute);
+      if (options.glob && !matchesGlob(options.glob, displayPath)) continue;
+      let content: string;
+      try {
+        content = await readFile(absolute, "utf8");
+      } catch {
+        continue;
+      }
+      const lines = content.split("\n");
+      let fileMatches = 0;
+      for (let lineIndex = 0; lineIndex < lines.length; lineIndex += 1) {
+        const line = lines[lineIndex] ?? "";
+        const column = matcher ? regexColumn(matcher, line) : line.indexOf(query);
+        if (column < 0) continue;
+        results.push(`${displayPath}:${lineIndex + 1}:${column + 1}:${line}`);
+        fileMatches += 1;
+        if (results.length >= maxResults) {
+          hasMore = true;
+          return;
+        }
+        if (fileMatches >= 5) break;
+      }
+    }
+  };
+
+  await visit(cwd);
+  return { results, truncated: hasMore };
+}
+
+function regexColumn(matcher: RegExp, line: string): number {
+  matcher.lastIndex = 0;
+  const match = matcher.exec(line);
+  return match?.index ?? -1;
+}
+
+function matchesGlob(pattern: string, path: string): boolean {
+  const normalized = path.replaceAll("\\", "/");
+  const expression = pattern
+    .replace(/[.+^${}()|[\]\\]/g, "\\$&")
+    .replace(/\*\*/g, ".*")
+    .replace(/\*/g, "[^/]*")
+    .replace(/\?/g, "[^/]");
+  const regex = new RegExp(`^(?:${expression}|(?:[^/]+/)*${expression})$`);
+  return regex.test(normalized);
+}
+
+function isMissingExecutable(error: unknown): boolean {
+  return error instanceof Error && ("code" in error ? (error as NodeJS.ErrnoException).code === "ENOENT" : /not found|不存在/i.test(error.message));
 }
 
 export function createSearchTool(cwd: string): Tool {

@@ -1,4 +1,4 @@
-import { rename } from "node:fs/promises";
+import { access, rename, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import type { AgentCheckpoint, AgentCheckpointState } from "./agent";
@@ -123,6 +123,39 @@ export class SessionStore {
       messages: checkpoint.messages,
       usage: totalUsage,
     });
+  }
+
+  async rename(id: string, nextId: string): Promise<void> {
+    validateSessionId(id);
+    validateSessionId(nextId);
+    if (id === nextId) return;
+    try {
+      await access(join(this.#workspace.root, sessionPath(id)));
+    } catch (error) {
+      if (isNodeError(error) && error.code === "ENOENT") throw new Error(`Session '${id}' does not exist`);
+      throw error;
+    }
+    try {
+      await access(join(this.#workspace.root, sessionPath(nextId)));
+      throw new Error(`Session '${nextId}' already exists`);
+    } catch (error) {
+      if (!(isNodeError(error) && error.code === "ENOENT")) throw error;
+    }
+
+    const snapshot = await this.loadSnapshot(id);
+    await this.saveSnapshot(nextId, snapshot);
+    await unlink(join(this.#workspace.root, sessionPath(id)));
+  }
+
+  async delete(id: string): Promise<boolean> {
+    validateSessionId(id);
+    try {
+      await unlink(join(this.#workspace.root, sessionPath(id)));
+      return true;
+    } catch (error) {
+      if (isNodeError(error) && error.code === "ENOENT") return false;
+      throw error;
+    }
   }
 
   async saveSnapshot(id: string, snapshot: SessionSnapshot): Promise<void> {

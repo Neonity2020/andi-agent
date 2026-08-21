@@ -118,4 +118,24 @@ describe("SessionStore", () => {
 
     expect((await store.loadSnapshot("ordered")).messages).toEqual([{ role: "user", content: "second" }]);
   });
+
+  test("renames the session ID and persistence file", async () => {
+    const { store, workspace } = await setup();
+    await store.save("before", [{ role: "user", content: "keep me" }]);
+
+    await store.rename("before", "after");
+
+    expect(await store.load("after")).toEqual([{ role: "user", content: "keep me" }]);
+    await expect(workspace.read(".andi-agent/sessions/before.json")).rejects.toThrow();
+    expect(JSON.parse(await workspace.read(".andi-agent/sessions/after.json"))).toMatchObject({ id: "after" });
+  });
+
+  test("deletes the persistence file and reports missing sessions", async () => {
+    const { store, workspace } = await setup();
+    await store.save("to-delete", []);
+
+    expect(await store.delete("to-delete")).toBeTrue();
+    expect(await store.delete("to-delete")).toBeFalse();
+    await expect(workspace.read(".andi-agent/sessions/to-delete.json")).rejects.toThrow();
+  });
 });

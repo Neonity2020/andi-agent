@@ -61,6 +61,10 @@ describe("parseArguments", () => {
   test("parses event logging mode", () => {
     expect(parseArguments(["--log-events", "task"]).logEvents).toBeTrue();
   });
+
+  test("parses local web mode", () => {
+    expect(parseArguments(["--web", "--port", "4321"])).toMatchObject({ web: true, port: 4321, task: undefined });
+  });
 });
 
 describe("main", () => {
@@ -77,6 +81,7 @@ describe("resolveSessionId", () => {
   test("preserves explicit sessions and does not default one-shot runs", () => {
     expect(resolveSessionId({ repl: true, session: "feature-auth" })).toBe("feature-auth");
     expect(resolveSessionId({ repl: false, session: undefined })).toBeUndefined();
+    expect(resolveSessionId({ repl: false, web: true, session: undefined })).toBe("default");
   });
 });
 
@@ -95,7 +100,15 @@ describe("createAgentToolRegistry", () => {
       "web_search",
     );
     expect(createAgentToolRegistry(workspace, config).definitions().map((tool) => tool.name)).toEqual(
-      expect.arrayContaining(["memory_search", "memory_read", "memory_remember", "memory_archive"]),
+      expect.arrayContaining([
+        "memory_search",
+        "memory_read",
+        "memory_remember",
+        "memory_archive",
+        "knowledge_search",
+        "knowledge_read",
+        "knowledge_capture",
+      ]),
     );
     expect(
       createAgentToolRegistry(workspace, {

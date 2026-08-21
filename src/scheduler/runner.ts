@@ -16,6 +16,8 @@ import type { ScheduledTaskRunner } from "./types";
 import { MemoryStore } from "../memory/store";
 import { createMemoryTools } from "../tools/memory";
 import type { SkillManager } from "../skills/manager";
+import { KnowledgeStore } from "../knowledge/store";
+import { createKnowledgeTools } from "../tools/knowledge";
 
 export interface ScheduledAgentRunnerOptions {
   workspace: Workspace;
@@ -36,6 +38,7 @@ export function createScheduledAgentRunner(options: ScheduledAgentRunnerOptions)
     createCommandTool(options.workspace.root),
     ...createGitTools(options.workspace),
     ...createMemoryTools(memory, { writable: false }),
+    ...createKnowledgeTools(new KnowledgeStore(options.workspace), { writable: false }),
     ...(options.config.exa ? [createWebSearchTool(options.config.exa)] : []),
   ]);
   const sessions = new SessionStore(options.workspace);

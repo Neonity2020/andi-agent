@@ -49,6 +49,15 @@ export class Workspace {
     }
   }
 
+  assertWritableToolPath(inputPath: string): void {
+    this.assertToolPath(inputPath);
+    const candidate = this.#lexicalPath(inputPath);
+    const pathFromRoot = relative(this.root, candidate);
+    if (pathFromRoot === "kb" || pathFromRoot.startsWith(`kb${sep}`)) {
+      throw new Error("The kb directory is managed by the knowledge tools");
+    }
+  }
+
   assertGitPath(inputPath: string): void {
     const candidate = this.#lexicalPath(inputPath);
     const pathFromRoot = relative(this.root, candidate);
@@ -190,7 +199,7 @@ export function createWorkspaceTools(workspace: Workspace): Tool[] {
         const values = requireRecord(input) as unknown as WriteInput;
         const record = values as unknown as Record<string, unknown>;
         const path = requireString(record, "path");
-        workspace.assertToolPath(path);
+        workspace.assertWritableToolPath(path);
         await workspace.write(path, requireString(record, "content"));
         throwIfAborted(context?.signal);
         return { written: values.path };
