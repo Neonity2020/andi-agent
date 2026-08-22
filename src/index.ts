@@ -84,4 +84,3 @@ export {
 export type * from "./tools/types";
 export { Workspace, createWorkspaceTools } from "./tools/workspace";
 export { addRunUsage, addTokenUsage, emptyRunUsage } from "./usage";
-export { createWebServer, type WebAgentFactory, type WebServer, type WebServerOptions } from "./web";

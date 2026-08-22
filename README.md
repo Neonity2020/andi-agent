@@ -84,17 +84,12 @@ cd ~/任意项目
 andi                      # 在当前 workspace 启动 TUI 交互会话
 andi                      # 使用 default session，自动保存并恢复对话
 andi --session real-dev   # 使用指定的持久 session 启动
-andi --web                # 启动仅绑定 127.0.0.1 的本地 Web UI
 andi --plain              # 使用经典 readline 界面
 andi schedule list        # 管理当前 workspace 的定时任务
 andi "修复失败的测试"      # 单次任务模式
 ```
 
 不带任何参数运行 `andi` 等价于 `--repl`，workspace 始终是当前目录。API 配置按优先级解析：shell 环境变量 > 当前目录的 `.env`（Bun 自动加载）> andi-agent 安装目录的 `.env`，因此在其他项目中运行 `andi` 无需重复配置 Key。
-
-### 本地 Web UI
-
-使用 `andi --web` 启动本机 Web UI，默认监听 `http://127.0.0.1:4317`；可用 `--cwd` 指定 workspace，或用 `--port` 修改端口。Web UI 与 TUI 共用 Agent、模型、工具和 session 存储，但运行中的会话会被串行保护。命令审批会显示在浏览器中，服务不会把 API Key 发送给浏览器，也不会监听远程网卡。
 
 ### 长期记忆
 
@@ -301,28 +296,5 @@ bun run test:live
 - 工具错误回传、最大循环次数限制。
 
 `run_command` 当前仅自动允许 `bun`/`npm` 的预设验证脚本和 `tsc --noEmit`。它不会调用 shell；其他命令需要审批。Git 操作统一使用专用工具，以禁用 external diff、textconv 和 fsmonitor 等仓库扩展。策略细节见 `.plans/002-coding-tools.md` 和 `.plans/004-stream-search-git.md`。
-
-### OpenChamber UI
-
-仓库内已集成 OpenChamber Web UI 源码，位于 `src/web`。首次使用先安装并构建前端：
-
-```bash
-bun run web:install
-bun run web:build
-```
-
-然后启动 andi Web 后端；它会直接提供已构建的 OpenChamber UI：
-
-```bash
-andi --web --port 4317
-```
-
-也可以用一条命令构建并启动：
-
-```bash
-bun run web:start
-```
-
-更新 OpenChamber 源码后重新执行 `bun run web:build`。接口和事件映射见 [`docs/openchamber-backend-compat.md`](docs/openchamber-backend-compat.md)。
 
 阶段设计文档位于 `.plans/`；定时任务设计见 `.plans/007-scheduled-tasks.md`。

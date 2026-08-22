@@ -8,10 +8,6 @@
   },
   "scripts": {
     "start": "bun run src/cli.ts",
-    "web:install": "bun install --cwd src/web",
-    "web:build": "bun run --cwd src/web/packages/web build",
-    "web:check": "bun run --cwd src/web type-check:web",
-    "web:start": "bun run web:build && bun run start -- --web",
     "test": "bun test",
     "test:live": "bun run src/cli.ts --cwd . \"Use read_file to find the package name, then use run_command to run the typecheck script. Do not modify files. Report the package name and whether typecheck passed.\"",
     "test:exa": "bun run test/exa-live.ts",
