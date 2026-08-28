@@ -14,6 +14,7 @@ Tests in `test/` mirror source modules, for example `test/agent.test.ts`. Archit
 - `bun test` — run the complete Bun test suite.
 - `bun run typecheck` — run strict TypeScript checking without emitting files.
 - `bun run test:live` — exercise the real Agnes API and tool-call loop; requires `AGNES_API_KEY`.
+- `bun run test:exa` — exercise the live Exa web-search integration; requires `EXA_API_KEY`.
 
 ## Coding Style & Naming Conventions
 
@@ -23,7 +24,7 @@ No formatter or linter is configured, so match surrounding code and verify white
 
 ## Testing Guidelines
 
-Use `bun:test` with `describe` and `test`. Name files `<module>.test.ts`; cover success, validation failure, and security boundaries. Only `test:live` may require credentials. Use temporary directories for filesystem and Git tests and clean them in `afterEach`. Run `bun test` and `bun run typecheck` before submitting.
+Use `bun:test` with `describe` and `test`. Name files `<module>.test.ts`; cover success, validation failure, and security boundaries. Only `test:live` and `test:exa` may require credentials (Agnes and Exa API keys respectively); everything else under `bun test` must run offline. Use temporary directories for filesystem and Git tests and clean them in `afterEach`. Run `bun test` and `bun run typecheck` before submitting.
 
 ## Commit & Pull Request Guidelines
 

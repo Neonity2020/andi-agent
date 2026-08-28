@@ -1,7 +1,7 @@
 ---
 title: MOC — 模型提供商内容地图
-id: providers-moc
-category: moc
+id: providers/moc
+category: providers
 type: navigation
 status: verified
 proto: index
