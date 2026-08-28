@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { OperationCancelledError } from "../src/runtime/abort";
 import { ScheduleStore } from "../src/scheduler/store";
 import { ToolRegistry } from "../src/tools/registry";
-import { createSchedulerTools } from "../src/tools/scheduler";
+import { createSchedulerTools, __setScheduleRunTimeoutMsForTests } from "../src/tools/scheduler";
 import { Workspace } from "../src/tools/workspace";
 
 const temporaryDirectories: string[] = [];
@@ -120,5 +120,39 @@ describe("scheduler tools", () => {
 
     await expect(running).rejects.toThrow("Operation cancelled");
     expect((await store.get("cancel-me"))?.lastRun?.status).toBe("cancelled");
+  });
+
+  test("returns timeout fallback when the runner exceeds the schedule_run budget", async () => {
+    const ORIGINAL_TIMEOUT = 10 * 60 * 1000;
+    __setScheduleRunTimeoutMsForTests(20);
+    try {
+      let notifyStarted: (() => void) | undefined;
+      const started = new Promise<void>((resolve) => {
+        notifyStarted = resolve;
+      });
+      const { registry, store } = await setup(async (_task, signal) => {
+        notifyStarted?.();
+        return new Promise((_resolve, reject) => {
+          signal?.addEventListener("abort", () => reject(new OperationCancelledError()), { once: true });
+        });
+      });
+      await store.add(
+        { id: "timeout-me", task: "wait", schedule: { kind: "interval", everyMs: 60_000 } },
+        new Date("2026-08-19T00:00:00.000Z"),
+      );
+
+      const result = await registry.execute("schedule_run", JSON.stringify({ id: "timeout-me" }));
+      await started;
+
+      expect(result).toMatchObject({
+        ok: true,
+        value: {
+          task: { id: "timeout-me" },
+          error: "schedule_run timed out after 10min",
+        },
+      });
+    } finally {
+      __setScheduleRunTimeoutMsForTests(ORIGINAL_TIMEOUT);
+    }
   });
 });

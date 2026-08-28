@@ -10,6 +10,14 @@ export interface SchedulerToolOptions {
   runner: ScheduledTaskRunner;
 }
 
+let SCHEDULE_RUN_TIMEOUT_MS = 10 * 60 * 1000;
+const SCHEDULE_RUN_TIMEOUT_MESSAGE = "schedule_run timed out after 10min";
+
+/** @internal Test-only override for the schedule_run timeout. */
+export function __setScheduleRunTimeoutMsForTests(ms: number): void {
+  SCHEDULE_RUN_TIMEOUT_MS = ms;
+}
+
 export function createSchedulerTools(store: ScheduleStore, options: SchedulerToolOptions): Tool[] {
   return [
     {
@@ -97,11 +105,39 @@ export function createSchedulerTools(store: ScheduleStore, options: SchedulerToo
             return runnerResult;
           },
         });
-        const completed = await scheduler.runNow(id, context?.signal);
-        return {
-          task: summarizeTask(completed),
-          ...(runnerResult?.output !== undefined ? { output: runnerResult.output } : {}),
-        };
+        const externalSignal = context?.signal;
+        const timeoutController = new AbortController();
+        const timeoutTimer = setTimeout(() => timeoutController.abort(), SCHEDULE_RUN_TIMEOUT_MS);
+        let externalAbortHandler: (() => void) | undefined;
+        if (externalSignal) {
+          if (externalSignal.aborted) timeoutController.abort();
+          else {
+            externalAbortHandler = () => timeoutController.abort();
+            externalSignal.addEventListener("abort", externalAbortHandler, { once: true });
+          }
+        }
+        try {
+          const completed = await scheduler.runNow(id, timeoutController.signal);
+          return {
+            task: summarizeTask(completed),
+            ...(runnerResult?.output !== undefined ? { output: runnerResult.output } : {}),
+          };
+        } catch (error) {
+          const timedOut = timeoutController.signal.aborted && externalSignal?.aborted !== true;
+          if (timedOut) {
+            const partial = await store.get(id).catch(() => null);
+            return {
+              task: partial ? summarizeTask(partial) : { id },
+              error: SCHEDULE_RUN_TIMEOUT_MESSAGE,
+            };
+          }
+          throw error;
+        } finally {
+          clearTimeout(timeoutTimer);
+          if (externalAbortHandler && externalSignal) {
+            externalSignal.removeEventListener("abort", externalAbortHandler);
+          }
+        }
       },
     },
   ];
